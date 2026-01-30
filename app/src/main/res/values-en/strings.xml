@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OrcTerm</string>
+    <string name="settings_title">Settings</string>
+    <string name="title_hosts">Hosts</string>
+    <string name="title_terminal">Terminal</string>
+    <string name="action_connect">Connect</string>
+    <string name="no_hosts">No hosts found. Add one to get started.</string>
+
+    <string name="background_set">Background set</string>
+    <string name="background_load_failed">Failed to load background</string>
+    <string name="error_prefix">Error: %1$s</string>
+    <string name="err_connect_fail">Connection failed</string>
+    <string name="err_auth_fail">Authentication failed</string>
+    <string name="action_ok">OK</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_close">Close</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_copy_path">Copy Path</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_deleted">Deleted</string>
+    <string name="action_delete_failed">Delete failed</string>
+    <string name="action_reset_all">Reset All</string>
+    <string name="action_reset_done">Reset done</string>
+    <string name="action_saved">Saved</string>
+    <string name="action_generate_key">Generate Key</string>
+    <string name="action_import_key">Import Key</string>
+    <string name="action_copied">Copied</string>
+    <string name="action_open_in_terminal">Open in terminal</string>
+    <string name="action_reload">Reload</string>
+    <string name="action_restart">Restart</string>
+
+    <string name="settings_main_ssh_title">SSH Management</string>
+    <string name="settings_main_ssh_summary">Hosts and keys management</string>
+    <string name="settings_main_cloud_title">Cloud Sync</string>
+    <string name="settings_main_cloud_summary">Sync status and data</string>
+    <string name="settings_main_cloud_summary_unbound">Unbound</string>
+    <string name="settings_main_cloud_summary_bound">Bound: %1$s</string>
+    <string name="settings_main_terminal_title">Terminal</string>
+    <string name="settings_main_terminal_summary">Fonts, themes and behaviors</string>
+    <string name="settings_main_theme_display_title">Theme &amp; Display</string>
+    <string name="settings_main_theme_display_summary">Dark mode, background and list style</string>
+    <string name="settings_main_theme_display_summary_format">Theme: %1$s</string>
+    <string name="settings_main_general_title">General</string>
+    <string name="settings_main_general_summary">Language, notifications and cache</string>
+    <string name="settings_main_general_summary_format">Language: %1$s</string>
+
+    <string name="settings_theme_mode_dark">Dark</string>
+    <string name="settings_theme_mode_light">Light</string>
+
+    <string name="settings_ssh_manage_title">SSH Management</string>
+    <string name="settings_cloud_sync_title">Cloud Sync</string>
+    <string name="settings_terminal_title">Terminal Settings</string>
+    <string name="settings_theme_display_title">Theme &amp; Display</string>
+    <string name="settings_general_title">General</string>
+
+    <string name="settings_ssh_hosts_title">Hosts</string>
+    <string name="settings_ssh_hosts_summary">Manage host list</string>
+    <string name="settings_ssh_keys_title">Keys</string>
+    <string name="settings_ssh_keys_summary">Generate/Import/Delete SSH keys</string>
+    <string name="settings_ssh_key_dir">Key store: %1$s</string>
+    <string name="action_delete_key">Delete Key</string>
+    <string name="settings_ssh_key_delete_confirm">Delete %1$s?</string>
+    <string name="settings_ssh_key_generated">Key generated: %1$s</string>
+    <string name="settings_ssh_key_generate_failed">Key generation failed</string>
+    <string name="settings_ssh_key_imported">Imported: %1$s</string>
+    <string name="settings_ssh_key_import_failed">Import failed: %1$s</string>
+
+    <string name="settings_cloud_status_header">Cloud Status</string>
+    <string name="settings_cloud_server_label">Server</string>
+    <string name="settings_cloud_last_sync_label">Last Sync</string>
+    <string name="settings_cloud_items_label">Local Items</string>
+    <string name="settings_cloud_actions_header">Actions</string>
+    <string name="settings_cloud_bind_title">Bind (Scan)</string>
+    <string name="settings_cloud_bind_summary">Scan QR code to bind</string>
+    <string name="settings_cloud_sync_summary">Pull and push changes</string>
+    <string name="settings_cloud_items_header">Synced Configs</string>
+    <string name="settings_cloud_items_empty">No synced hosts</string>
+    <string name="settings_cloud_unbound">Unbound</string>
+    <string name="settings_cloud_never_sync">Never</string>
+    <string name="settings_cloud_scan_prompt">Scan QR code</string>
+    <string name="settings_cloud_scan_invalid">Invalid QR code</string>
+    <string name="settings_cloud_bound">Cloud sync bound</string>
+    <string name="settings_cloud_bind_failed">Bind failed: %1$s</string>
+    <string name="settings_cloud_need_bind">Please bind first</string>
+    <string name="settings_cloud_sync_done">Sync completed</string>
+    <string name="settings_cloud_sync_failed">Sync failed: %1$s</string>
+
+    <string name="settings_terminal_font_title">Font</string>
+    <string name="settings_terminal_font_summary">Adjust font size</string>
+    <string name="settings_terminal_theme_title">Color Theme</string>
+    <string name="settings_terminal_theme_summary">Select color scheme</string>
+    <string name="settings_terminal_keypad_title">Keypad Mapping</string>
+    <string name="settings_terminal_keypad_summary">Customize shortcuts</string>
+    <string name="settings_terminal_behavior_title">Behavior</string>
+    <string name="settings_terminal_behavior_summary">Enter key, scrollback etc.</string>
+    <string name="settings_terminal_keypad_hint">Enter string or escape sequence</string>
+    <string name="settings_terminal_keypad_edit">Map: %1$s</string>
+
+    <string name="settings_theme_mode_title">Dark Mode</string>
+    <string name="settings_theme_mode_summary">Switch app appearance</string>
+    <string name="settings_theme_bg_title">Background</string>
+    <string name="settings_theme_bg_summary">Custom background image</string>
+    <string name="settings_theme_density_title">Layout Density</string>
+    <string name="settings_theme_density_summary">Adjust list density</string>
+
+    <string name="msg_selected_count">%d Selected</string>
+    <string name="msg_extract_task_submitted">Extraction task submitted</string>
+    <string name="msg_cut_n_files">Cut %d files</string>
+    <string name="msg_copied_n_files">Copied %d files</string>
+    <string name="msg_path_copied">Path copied: %1$s</string>
+    <string name="msg_file_created">File created</string>
+    <string name="msg_folder_created">Folder created</string>
+    <string name="msg_save_success">Saved successfully</string>
+    <string name="msg_save_fail">Save failed: %1$s</string>
+    <string name="msg_download_success">Downloaded to: %1$s</string>
+    <string name="msg_download_fail">Download failed: %1$s</string>
+    <string name="msg_download_file_too_large">File too large to preview</string>
+    <string name="msg_upload_success_fmt">Uploaded: %1$s</string>
+    <string name="msg_upload_fail">Upload failed: %1$s</string>
+    <string name="msg_rename_success">Renamed successfully</string>
+    <string name="msg_delete_success">Deleted successfully</string>
+    <string name="msg_delete_n_files">Delete %d files</string>
+    <string name="msg_delete_warning">Are you sure you want to delete these files? This cannot be undone.</string>
+    <string name="msg_compress_success">Compression task submitted</string>
+    <string name="msg_paste_success">Paste successfully</string>
+    <string name="msg_error">Error: %1$s</string>
+    <string name="msg_file_info_bytes">%1$s (%2$d bytes)</string>
+    <string name="msg_file_too_large">File too large to edit</string>
+    <string name="msg_file_too_large_for_preview">File is too large for preview</string>
+    <string name="msg_operation_fail">Operation failed: %1$s</string>
+    <string name="msg_reload_restart_prompt">Saved %1$s. Reload or restart?</string>
+    <string name="msg_command_sent">Command sent</string>
+    <string name="transfer_speed_eta_fmt">Speed %1$s, ETA %2$s</string>
+    <string name="transfer_queue_fmt">%1$d/%2$d</string>
+    <string name="msg_transfer_canceled">Transfer canceled</string>
+    <string name="msg_transfer_cancel_requested">Cancel requested</string>
+    <string name="msg_transfer_retrying_fmt">Transfer failed, retrying: %1$s (remaining %2$d)</string>
+    <string name="msg_transfer_no_active">No active transfer</string>
+    <string name="notification_transfer_title">File Transfer</string>
+    <string name="notification_transfer_content">Transferring files</string>
+    <string name="notification_transfer_channel_name">SFTP Transfers</string>
+    <string name="notification_transfer_channel_description">Shows file transfer progress</string>
+    <string name="dialog_create_folder">New Folder</string>
+    <string name="dialog_create_file">New File</string>
+    <string name="dialog_delete_title">Confirm Delete</string>
+    <string name="msg_confirm_delete">Delete %1$s?</string>
+    <string name="dialog_compress_title">Compress Files</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_new_folder">New Folder</string>
+    <string name="action_new_file">New File</string>
+    <string name="action_upload">Upload File</string>
+    <string name="action_goto">Go to Path</string>
+    <string name="action_sort">Sort</string>
+    <string name="action_show_hidden">Show Hidden Files</string>
+    <string name="action_home">Home</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_more">More</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_download">Download</string>
+    <string name="action_extract">Extract</string>
+    <string name="action_pin">Pin</string>
+    <string name="action_unpin">Unpin</string>
+    <string name="action_upload_folder">Upload Folder</string>
+    <string name="dialog_extract_title">Extract Files</string>
+    <string name="msg_extract_n_archives">About to extract %d archives</string>
+    <string name="msg_extract_success">Extraction task submitted</string>
+    <string name="msg_extract_fail">Extraction failed: %1$s</string>
+    <string name="process_status_running">Running</string>
+    <string name="process_status_sleeping">Sleeping</string>
+    <string name="process_status_disk_sleep">Disk Sleep</string>
+    <string name="process_status_stopped">Stopped</string>
+    <string name="process_status_zombie">Zombie</string>
+    <string name="process_status_idle">Idle</string>
+    <string name="sftp_cannot_compress_folders">Folders cannot be compressed directly</string>
+
+    <!-- Monitor -->
+    <string name="monitor_system_load">System Load</string>
+    <string name="monitor_cpu_load">CPU Load</string>
+    <string name="monitor_memory">Memory</string>
+    <string name="monitor_disk">Disk</string>
+    <string name="monitor_network">Network</string>
+    <string name="monitor_process">Processes</string>
+    <string name="monitor_disk_switch">Switch Disk</string>
+    <string name="monitor_disk_details">Disk Details (lsblk)</string>
+    <string name="monitor_net_speed">Net Speed</string>
+    <string name="monitor_disk_space">Disk Space</string>
+    <string name="monitor_used_space">Used</string>
+    <string name="monitor_processes">Processes</string>
+    <string name="monitor_process_pid">PID</string>
+    <string name="monitor_process_name">Name</string>
+    <string name="monitor_process_cpu">CPU(%)</string>
+    <string name="monitor_process_mem">Mem</string>
+    <string name="monitor_process_conn">Conn</string>
+    <string name="monitor_process_status">Status</string>
+    <string name="monitor_process_uptime">Uptime</string>
+
+    <!-- File Manager -->
+    <string name="file_action_select_all">Select All</string>
+    <string name="file_action_copy">Copy</string>
+    <string name="file_action_cut">Cut</string>
+    <string name="file_action_paste">Paste</string>
+    <string name="file_action_delete">Delete</string>
+    <string name="file_action_compress">Compress</string>
+    <string name="file_action_rename">Rename</string>
+    <string name="file_action_properties">Properties</string>
+    <string name="file_action_confirm_delete">Delete %d selected items?</string>
+    <string name="file_action_compress_title">Compress Files</string>
+    <string name="file_action_compress_name">Filename</string>
+    <string name="file_action_cancel_selection">Cancel Selection</string>
+    <string name="file_action_compress_default_name">archive.tar.gz</string>
+    <string name="msg_upload_folder_success">Folder upload finished (%1$d files)</string>
+    <string name="msg_upload_folder_invalid">Cannot read the selected folder</string>
+    <string name="settings_theme_list_style_title">List Style</string>
+    <string name="settings_theme_list_style_summary">Choose host list style</string>
+    <string name="settings_theme_preview_header">Preview</string>
+
+    <string name="settings_language_title">Language</string>
+    <string name="settings_language_summary">English</string>
+    <string name="settings_language_open_failed">Cannot open system language settings</string>
+    <string name="settings_language_system">System Default</string>
+    <string name="settings_language_zh">Simplified Chinese</string>
+    <string name="settings_language_en">English</string>
+
+    <string name="settings_notifications_header">Notifications</string>
+    <string name="settings_notification_persistent_title">Persistent Notification</string>
+    <string name="settings_notification_persistent_summary">Show notification when SSH is connected</string>
+    <string name="settings_notification_persistent_inactive">Unavailable (No SSH connection)</string>
+    <string name="settings_notification_system_title">System Settings</string>
+    <string name="settings_notification_system_summary">Open system notification settings</string>
+    <string name="settings_notification_open_failed">Cannot open notification settings</string>
+
+    <string name="settings_clear_cache_title">Clear Cache</string>
+    <string name="settings_clear_cache_summary">Free up storage space</string>
+    <string name="settings_clear_cache_confirm">Clear all temporary files?</string>
+    <string name="settings_clear_cache_done">Cache cleared</string>
+
+    <string name="settings_about_title">About</string>
+    <string name="settings_about_summary">Version and license</string>
+    <string name="settings_about_message">Version: 1.0.0\n\nLicense: Apache 2.0\n\nA modern mobile SSH &amp; Docker client.</string>
+
+    <string name="notification_ssh_active_title">SSH Connected</string>
+    <string name="notification_ssh_active_content">%1$s</string>
+    <string name="notification_channel_name">SSH Status</string>
+    <string name="notification_channel_description">Persistent notification for SSH connections</string>
+
+    <string name="label_add_host">Add Host</string>
+    <string name="label_terminal">Terminal</string>
+    <string name="label_docker">Docker</string>
+    <string name="label_container_detail">Container Detail</string>
+    <string name="label_container_logs">Container Logs</string>
+    <string name="label_sftp">SFTP</string>
+    <string name="label_system_monitor">System Monitor</string>
+    <string name="label_host_detail">Host Detail</string>
+
+    <string name="settings_main_file_title">File Management</string>
+    <string name="settings_main_file_summary">Downloads, sorting, editor settings</string>
+    <string name="settings_file_management_title">File Management</string>
+    <string name="settings_file_download_path_title">Default Download Path</string>
+    <string name="settings_file_download_path_summary">Choose directory for downloads</string>
+    <string name="settings_file_sort_order_title">Default Sort Order</string>
+    <string name="settings_file_sort_order_summary">Set file list sorting rule</string>
+    <string name="settings_file_show_hidden_title">Show Hidden Files</string>
+    <string name="settings_file_show_hidden_summary">Show files starting with .</string>
+    <string name="settings_file_icon_size_title">Icon Size</string>
+    <string name="settings_file_icon_size_summary">Set file list icon size</string>
+    <string name="settings_file_unzip_path_title">Default Unzip Path</string>
+    <string name="settings_file_unzip_path_summary">Set target directory for extraction</string>
+    <string name="settings_file_editor_font_title">Editor Font Size</string>
+    <string name="settings_file_editor_font_summary">Set text editor font size</string>
+    <string name="settings_file_path_current">Current: %1$s</string>
+
+    <string-array name="file_sort_options">
+        <item>By Name</item>
+        <item>By Time</item>
+        <item>By Size</item>
+        <item>By Type</item>
+    </string-array>
+
+    <string-array name="file_icon_size_options">
+        <item>List</item>
+        <item>Small Icons</item>
+        <item>Large Icons</item>
+    </string-array>
+
+    <string-array name="auto_lock_options">
+        <item>Immediately</item>
+        <item>After 30s</item>
+        <item>After 1m</item>
+        <item>After 5m</item>
+        <item>Never</item>
+    </string-array>
+
+    <string-array name="terminal_themes">
+        <item>Solarized Dark</item>
+        <item>One Dark</item>
+        <item>GitHub Light</item>
+        <item>Monokai</item>
+    </string-array>
+
+    <string-array name="font_size_options">
+        <item>Small</item>
+        <item>Normal</item>
+        <item>Large</item>
+        <item>Huge</item>
+    </string-array>
+
+    <string-array name="disk_partitions">
+        <item>/</item>
+        <item>/home</item>
+        <item>/boot</item>
+        <item>/var</item>
+    </string-array>
+
+    <string-array name="host_display_styles">
+        <item>Simple</item>
+        <item>Linear</item>
+        <item>Ring</item>
+        <item>None</item>
+    </string-array>
+
+    <string-array name="list_density_options">
+        <item>Compact</item>
+        <item>Normal</item>
+        <item>Loose</item>
+    </string-array>
+
+    <string-array name="terminal_behavior_options">
+        <item>Send Newline on Enter</item>
+        <item>Local Echo</item>
+    </string-array>
+
+    <string-array name="keypad_mapping_labels">
+        <item>ESC</item>
+        <item>TAB</item>
+        <item>CTRL</item>
+        <item>ALT</item>
+        <item>META</item>
+        <item>F1</item>
+        <item>F2</item>
+        <item>F3</item>
+        <item>F4</item>
+        <item>F5</item>
+        <item>F6</item>
+        <item>F7</item>
+        <item>F8</item>
+        <item>F9</item>
+        <item>F10</item>
+        <item>HOME</item>
+        <item>END</item>
+        <item>PGUP</item>
+        <item>PGDN</item>
+        <item>INS</item>
+        <item>DEL</item>
+        <item>↑</item>
+        <item>↓</item>
+        <item>←</item>
+        <item>→</item>
+        <item>CTRL+C</item>
+        <item>CTRL+Z</item>
+        <item>CTRL+D</item>
+        <item>CTRL+L</item>
+        <item>|</item>
+        <item>/</item>
+        <item>-</item>
+        <item>=</item>
+        <item>~</item>
+        <item>[</item>
+        <item>]</item>
+        <item>{</item>
+        <item>}</item>
+        <item>&lt;</item>
+        <item>&gt;</item>
+        <item>&amp;</item>
+        <item>+</item>
+        <item>*</item>
+        <item>%</item>
+        <item>`</item>
+    </string-array>
+
+    <string-array name="language_options">
+        <item>System Default</item>
+        <item>中文 (简体)</item>
+        <item>English</item>
+    </string-array>
+</resources>

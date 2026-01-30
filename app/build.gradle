@@ -1,0 +1,133 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.orcterm'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.orcterm"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        externalNativeBuild {
+            cmake {
+                cppFlags ""
+                abiFilters 'arm64-v8a', 'x86_64'
+            }
+        }
+        
+        // Enable Multi-dex if needed (usually for API < 21, but good for large apps)
+        multiDexEnabled true
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(project.findProperty("RELEASE_STORE_FILE") ?: "release.jks")
+            storePassword project.findProperty("RELEASE_STORE_PASSWORD")
+            keyAlias project.findProperty("RELEASE_KEY_ALIAS")
+            keyPassword project.findProperty("RELEASE_KEY_PASSWORD")
+        }
+        debug {
+            // Default debug keystore is used
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+            debuggable false
+        }
+        debug {
+            minifyEnabled false
+            applicationIdSuffix ".debug"
+            debuggable true
+        }
+        staging {
+            initWith release
+            applicationIdSuffix ".staging"
+            signingConfig signingConfigs.release
+            debuggable true
+            minifyEnabled true // Test obfuscation in staging
+        }
+    }
+
+    // Flavor Dimensions for Multi-channel packaging
+    flavorDimensions "channel"
+    productFlavors {
+        googlePlay {
+            dimension "channel"
+            // Configs specific to Google Play (e.g. Analytics enabled)
+        }
+        foss {
+            dimension "channel"
+            applicationIdSuffix ".foss"
+            // Configs for F-Droid or direct download (e.g. proprietary libs removed)
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+    
+    buildFeatures {
+        viewBinding true
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds true
+        htmlReport true
+        xmlReport true
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+        resources {
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/license.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt', 'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/*.kotlin_module']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.7.0'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
+    implementation 'androidx.navigation:navigation-fragment:2.7.7'
+    implementation 'androidx.navigation:navigation-ui:2.7.7'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'
+    
+    // Room components
+    def room_version = "2.6.1"
+    implementation "androidx.room:room-runtime:$room_version"
+    annotationProcessor "androidx.room:room-compiler:$room_version"
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+
+    // QR Code Scanner
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    implementation 'com.google.zxing:core:3.4.1'
+}

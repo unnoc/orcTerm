@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/nav_servers"
+        android:icon="@drawable/ic_action_computer"
+        android:title="服务器"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/nav_terminal"
+        android:icon="@drawable/ic_action_terminal"
+        android:title="终端"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/nav_files"
+        android:icon="@drawable/ic_action_folder"
+        android:title="文件"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/nav_profile"
+        android:icon="@drawable/ic_action_settings"
+        android:title="设置"
+        app:showAsAction="always" />
+</menu>

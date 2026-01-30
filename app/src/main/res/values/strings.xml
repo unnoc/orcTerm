@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OrcTerm</string>
+    <string name="settings_title">设置</string>
+    <string name="title_hosts">Hosts</string>
+    <string name="title_terminal">Terminal</string>
+    <string name="action_connect">Connect</string>
+    <string name="no_hosts">No hosts found. Add one to get started.</string>
+
+    <string name="background_set">背景已设置</string>
+    <string name="background_load_failed">背景加载失败</string>
+    <string name="error_prefix">错误: %1$s</string>
+    <string name="err_connect_fail">连接失败</string>
+    <string name="err_auth_fail">认证失败</string>
+    <string name="action_ok">确定</string>
+    <string name="action_save">保存</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_close">关闭</string>
+    <string name="action_clear">清理</string>
+    <string name="action_copy_path">复制路径</string>
+    <string name="action_delete">删除</string>
+    <string name="action_deleted">已删除</string>
+    <string name="action_delete_failed">删除失败</string>
+    <string name="action_reset_all">重置全部</string>
+    <string name="action_reset_done">已重置</string>
+    <string name="action_saved">已保存</string>
+    <string name="action_generate_key">生成新密钥</string>
+    <string name="action_import_key">导入密钥</string>
+    <string name="action_copied">已复制</string>
+    <string name="action_open_in_terminal">在终端中打开</string>
+    <string name="action_reload">重载</string>
+    <string name="action_restart">重启</string>
+
+    <string name="settings_main_ssh_title">SSH 管理</string>
+    <string name="settings_main_ssh_summary">连接配置与密钥管理</string>
+    <string name="settings_main_cloud_title">云同步</string>
+    <string name="settings_main_cloud_summary">绑定状态与同步数据</string>
+    <string name="settings_main_cloud_summary_unbound">未绑定</string>
+    <string name="settings_main_cloud_summary_bound">已绑定: %1$s</string>
+    <string name="settings_main_terminal_title">终端设置</string>
+    <string name="settings_main_terminal_summary">字体、主题与键盘行为</string>
+    <string name="settings_main_theme_display_title">主题与显示</string>
+    <string name="settings_main_theme_display_summary">深色模式、背景与列表样式</string>
+    <string name="settings_main_theme_display_summary_format">外观: %1$s</string>
+    <string name="settings_main_general_title">通用</string>
+    <string name="settings_main_general_summary">语言、通知与清理</string>
+    <string name="settings_main_general_summary_format">语言: %1$s</string>
+
+    <string name="settings_theme_mode_dark">深色</string>
+    <string name="settings_theme_mode_light">浅色</string>
+
+    <string name="settings_ssh_manage_title">SSH 管理</string>
+    <string name="settings_cloud_sync_title">云同步</string>
+    <string name="settings_terminal_title">终端设置</string>
+    <string name="settings_theme_display_title">主题与显示</string>
+    <string name="settings_general_title">通用</string>
+
+    <string name="settings_ssh_hosts_title">主机管理</string>
+    <string name="settings_ssh_hosts_summary">查看与编辑主机列表</string>
+    <string name="settings_ssh_keys_title">密钥管理</string>
+    <string name="settings_ssh_keys_summary">生成/导入/删除 SSH 密钥</string>
+    <string name="settings_ssh_key_dir">密钥存储目录: %1$s</string>
+    <string name="action_delete_key">删除密钥</string>
+    <string name="settings_ssh_key_delete_confirm">确定删除 %1$s 吗？</string>
+    <string name="settings_ssh_key_generated">密钥已生成: %1$s</string>
+    <string name="settings_ssh_key_generate_failed">密钥生成失败</string>
+    <string name="settings_ssh_key_imported">已导入: %1$s</string>
+    <string name="settings_ssh_key_import_failed">导入失败: %1$s</string>
+
+    <string name="settings_cloud_status_header">云同步状态</string>
+    <string name="settings_cloud_server_label">绑定服务器</string>
+    <string name="settings_cloud_last_sync_label">上次同步时间</string>
+    <string name="settings_cloud_items_label">本地项目条目</string>
+    <string name="settings_cloud_actions_header">操作</string>
+    <string name="settings_cloud_bind_title">扫码绑定</string>
+    <string name="settings_cloud_bind_summary">通过二维码绑定云同步服务</string>
+    <string name="settings_cloud_sync_summary">拉取并推送最新更改</string>
+    <string name="settings_cloud_items_header">服务器端已同步的配置</string>
+    <string name="settings_cloud_items_empty">暂无同步的主机配置</string>
+    <string name="settings_cloud_unbound">未绑定</string>
+    <string name="settings_cloud_never_sync">从未同步</string>
+    <string name="settings_cloud_scan_prompt">请对准二维码进行扫描</string>
+    <string name="settings_cloud_scan_invalid">二维码格式错误</string>
+    <string name="settings_cloud_bound">已绑定云同步</string>
+    <string name="settings_cloud_bind_failed">绑定失败: %1$s</string>
+    <string name="settings_cloud_need_bind">请先扫码绑定云同步</string>
+    <string name="settings_cloud_sync_done">云同步完成</string>
+    <string name="settings_cloud_sync_failed">云同步失败: %1$s</string>
+
+    <string name="settings_terminal_font_title">字体设置</string>
+    <string name="settings_terminal_font_summary">调整终端字号与字体</string>
+    <string name="settings_terminal_theme_title">颜色主题</string>
+    <string name="settings_terminal_theme_summary">选择终端配色方案</string>
+    <string name="settings_terminal_keypad_title">键盘映射</string>
+    <string name="settings_terminal_keypad_summary">自定义快捷键映射</string>
+    <string name="settings_terminal_behavior_title">行为设置</string>
+    <string name="settings_terminal_behavior_summary">回车键、滚动缓冲区等</string>
+    <string name="settings_terminal_keypad_hint">输入字符串或转义序列</string>
+    <string name="settings_terminal_keypad_edit">映射: %1$s</string>
+
+    <string name="settings_theme_mode_title">深色模式</string>
+    <string name="settings_theme_mode_summary">切换应用外观</string>
+    <string name="settings_theme_bg_title">背景设置</string>
+    <string name="settings_theme_bg_summary">自定义应用背景图片</string>
+    <string name="settings_theme_density_title">布局密度</string>
+    <string name="settings_theme_density_summary">调整列表间距</string>
+
+    <string name="msg_selected_count">已选择 %d 项</string>
+    <string name="msg_extract_task_submitted">解压任务已提交</string>
+    <string name="msg_cut_n_files">已剪切 %d 个文件</string>
+    <string name="msg_copied_n_files">已复制 %d 个文件</string>
+    <string name="msg_path_copied">路径已复制: %1$s</string>
+    <string name="msg_file_created">文件已创建</string>
+    <string name="msg_folder_created">文件夹已创建</string>
+    <string name="msg_save_success">保存成功</string>
+    <string name="msg_save_fail">保存失败: %1$s</string>
+    <string name="msg_download_success">下载成功: %1$s</string>
+    <string name="msg_download_fail">下载失败: %1$s</string>
+    <string name="msg_download_file_too_large">文件太大，无法预览</string>
+    <string name="msg_upload_success_fmt">上传成功: %1$s</string>
+    <string name="msg_upload_fail">上传失败: %1$s</string>
+    <string name="msg_upload_folder_success">文件夹上传完成（%1$d 个文件）</string>
+    <string name="msg_upload_folder_invalid">无法读取选择的文件夹</string>
+    <string name="msg_rename_success">重命名成功</string>
+    <string name="msg_delete_success">删除成功</string>
+    <string name="msg_delete_n_files">删除 %d 个文件</string>
+    <string name="msg_delete_warning">确定要删除这些文件吗？此操作无法撤销。</string>
+    <string name="msg_compress_success">压缩任务已提交</string>
+    <string name="msg_paste_success">粘贴成功</string>
+    <string name="msg_error">错误: %1$s</string>
+    <string name="msg_file_info_bytes">%1$s (%2$d 字节)</string>
+    <string name="msg_file_too_large">文件太大，无法编辑</string>
+    <string name="msg_file_too_large_for_preview">File is too large for preview</string>
+    <string name="msg_operation_fail">操作失败: %1$s</string>
+    <string name="msg_reload_restart_prompt">已保存 %1$s，需要重载或重启吗？</string>
+    <string name="msg_command_sent">命令已发送</string>
+    <string name="transfer_speed_eta_fmt">速度 %1$s，剩余 %2$s</string>
+    <string name="transfer_queue_fmt">%1$d/%2$d</string>
+    <string name="msg_transfer_canceled">传输已取消</string>
+    <string name="msg_transfer_cancel_requested">已请求取消</string>
+    <string name="msg_transfer_retrying_fmt">传输失败，准备重试：%1$s（剩余 %2$d 次）</string>
+    <string name="msg_transfer_no_active">当前没有进行中的传输</string>
+    <string name="notification_transfer_title">文件传输</string>
+    <string name="notification_transfer_content">正在传输文件</string>
+    <string name="notification_transfer_channel_name">SFTP 传输</string>
+    <string name="notification_transfer_channel_description">用于显示文件传输进度</string>
+    <string name="dialog_create_folder">新建文件夹</string>
+    <string name="dialog_create_file">新建文件</string>
+    <string name="dialog_delete_title">删除确认</string>
+    <string name="msg_confirm_delete">确定删除 %1$s 吗？</string>
+    <string name="dialog_compress_title">压缩文件</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_new_folder">新建文件夹</string>
+    <string name="action_new_file">新建文件</string>
+    <string name="action_upload">上传文件</string>
+    <string name="action_upload_folder">上传文件夹</string>
+    <string name="action_goto">跳转路径</string>
+    <string name="action_sort">排序</string>
+    <string name="action_show_hidden">显示隐藏文件</string>
+    <string name="action_home">回到根目录</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_more">更多</string>
+    <string name="action_rename">重命名</string>
+    <string name="action_download">下载</string>
+    <string name="action_compress">压缩</string>
+    <string name="action_extract">解压</string>
+    <string name="action_pin">固定</string>
+    <string name="action_unpin">取消固定</string>
+    <string name="msg_extract_n_archives">即将解压 %d 个压缩包</string>
+    <string name="dialog_extract_title">解压文件</string>
+    <string name="msg_extract_success">解压任务已提交</string>
+    <string name="msg_extract_fail">解压失败: %1$s</string>
+    <string name="process_status_running">运行中</string>
+    <string name="process_status_sleeping">睡眠</string>
+    <string name="process_status_disk_sleep">磁盘睡眠</string>
+    <string name="process_status_stopped">已停止</string>
+    <string name="process_status_zombie">僵尸</string>
+    <string name="process_status_idle">空闲</string>
+    <string name="sftp_cannot_compress_folders">文件夹不能直接压缩</string>
+
+    <!-- Monitor -->
+    <string name="monitor_system_load">系统负载</string>
+    <string name="monitor_cpu_load">CPU 负载</string>
+    <string name="monitor_memory">内存</string>
+    <string name="monitor_disk">磁盘</string>
+    <string name="monitor_network">网络</string>
+    <string name="monitor_process">进程</string>
+    <string name="monitor_disk_switch">切换磁盘</string>
+    <string name="monitor_disk_details">磁盘详情 (lsblk)</string>
+    <string name="monitor_net_speed">网速</string>
+    <string name="monitor_disk_space">磁盘空间</string>
+    <string name="monitor_disk_space_fmt">磁盘空间 (%1$s)</string>
+    <string name="monitor_used_space">已用</string>
+    <string name="monitor_processes">进程列表</string>
+    <string name="monitor_process_pid">PID</string>
+    <string name="monitor_process_name">名称</string>
+    <string name="monitor_process_cpu">CPU(%)</string>
+    <string name="monitor_process_mem">内存</string>
+    <string name="monitor_process_conn">连接</string>
+    <string name="monitor_process_status">状态</string>
+    <string name="monitor_process_uptime">启动时间</string>
+
+    <!-- File Manager -->
+    <string name="file_action_select_all">全选</string>
+    <string name="file_action_copy">复制</string>
+    <string name="file_action_cut">剪切</string>
+    <string name="file_action_paste">粘贴</string>
+    <string name="file_action_delete">删除</string>
+    <string name="file_action_compress">压缩</string>
+    <string name="file_action_rename">重命名</string>
+    <string name="file_action_properties">属性</string>
+    <string name="file_action_confirm_delete">确定删除选中的 %d 个项目吗？</string>
+    <string name="file_action_compress_title">压缩文件</string>
+    <string name="file_action_compress_name">文件名</string>
+    <string name="file_action_cancel_selection">取消选择</string>
+    <string name="file_action_compress_default_name">archive.tar.gz</string>
+    <string name="settings_theme_list_style_title">列表显示样式</string>
+    <string name="settings_theme_list_style_summary">选择主机列表显示样式</string>
+    <string name="settings_theme_preview_header">样式预览</string>
+
+    <string name="settings_language_title">语言 / Language</string>
+    <string name="settings_language_summary">简体中文</string>
+    <string name="settings_language_open_failed">无法打开系统语言设置</string>
+    <string name="settings_language_system">跟随系统</string>
+    <string name="settings_language_zh">简体中文</string>
+    <string name="settings_language_en">English</string>
+
+    <string name="settings_notifications_header">通知管理</string>
+    <string name="settings_notification_persistent_title">常驻通知</string>
+    <string name="settings_notification_persistent_summary">SSH 连接期间显示状态栏通知</string>
+    <string name="settings_notification_persistent_inactive">当前无 SSH 连接，不可用</string>
+    <string name="settings_notification_system_title">系统通知设置</string>
+    <string name="settings_notification_system_summary">打开系统通知设置页面</string>
+    <string name="settings_notification_open_failed">无法打开通知设置</string>
+
+    <string name="settings_clear_cache_title">清理缓存</string>
+    <string name="settings_clear_cache_summary">释放存储空间</string>
+    <string name="settings_clear_cache_confirm">确定要清理所有临时文件吗？</string>
+    <string name="settings_clear_cache_done">缓存已清理</string>
+
+    <string name="settings_about_title">关于应用</string>
+    <string name="settings_about_summary">版本与开源许可</string>
+    <string name="settings_about_message">版本: 1.0.0\n\n开源许可: Apache 2.0\n\n一个现代化的移动端 SSH 与 Docker 客户端。</string>
+
+    <string name="notification_ssh_active_title">SSH 连接中</string>
+    <string name="notification_ssh_active_content">%1$s</string>
+    <string name="notification_channel_name">SSH 连接状态</string>
+    <string name="notification_channel_description">SSH 常驻连接状态通知</string>
+
+    <string name="label_add_host">添加主机</string>
+    <string name="label_terminal">终端</string>
+    <string name="label_docker">Docker 容器</string>
+    <string name="label_container_detail">容器详情</string>
+    <string name="label_container_logs">容器日志</string>
+    <string name="label_sftp">SFTP</string>
+    <string name="label_system_monitor">系统监控</string>
+    <string name="label_host_detail">主机详情</string>
+
+    <string name="settings_main_file_title">文件管理</string>
+    <string name="settings_main_file_summary">下载、排序、编辑器设置</string>
+    <string name="settings_file_management_title">文件管理</string>
+    <string name="settings_file_download_path_title">默认下载路径</string>
+    <string name="settings_file_download_path_summary">选择文件下载保存目录</string>
+    <string name="settings_file_sort_order_title">默认排序方式</string>
+    <string name="settings_file_sort_order_summary">设置文件列表排序规则</string>
+    <string name="settings_file_show_hidden_title">显示隐藏文件</string>
+    <string name="settings_file_show_hidden_summary">显示以 . 开头的文件</string>
+    <string name="settings_file_icon_size_title">图标大小</string>
+    <string name="settings_file_icon_size_summary">设置文件列表图标显示大小</string>
+    <string name="settings_file_unzip_path_title">默认解压路径</string>
+    <string name="settings_file_unzip_path_summary">设置文件解压目标目录</string>
+    <string name="settings_file_editor_font_title">编辑器字号</string>
+    <string name="settings_file_editor_font_summary">设置文本编辑器字体大小</string>
+    <string name="settings_file_path_current">当前路径: %1$s</string>
+
+    <string-array name="file_sort_options">
+        <item>按名称</item>
+        <item>按修改时间</item>
+        <item>按大小</item>
+        <item>按类型</item>
+    </string-array>
+
+    <string-array name="file_icon_size_options">
+        <item>列表</item>
+        <item>小图标</item>
+        <item>大图标</item>
+    </string-array>
+
+    <string-array name="auto_lock_options">
+        <item>立即</item>
+        <item>30秒后</item>
+        <item>1分钟后</item>
+        <item>5分钟后</item>
+        <item>永不</item>
+    </string-array>
+
+    <string-array name="terminal_themes">
+        <item>Solarized Dark</item>
+        <item>One Dark</item>
+        <item>GitHub Light</item>
+        <item>Monokai</item>
+    </string-array>
+
+    <string-array name="font_size_options">
+        <item>小</item>
+        <item>标准</item>
+        <item>大</item>
+        <item>特大</item>
+    </string-array>
+
+    <string-array name="disk_partitions">
+        <item>/</item>
+        <item>/home</item>
+        <item>/boot</item>
+        <item>/var</item>
+    </string-array>
+
+    <string-array name="host_display_styles">
+        <item>极简</item>
+        <item>线性</item>
+        <item>环形</item>
+        <item>无</item>
+    </string-array>
+
+    <string-array name="list_density_options">
+        <item>紧凑</item>
+        <item>标准</item>
+        <item>宽松</item>
+    </string-array>
+
+    <string-array name="terminal_behavior_options">
+        <item>回车发送换行</item>
+        <item>启用本地回显</item>
+    </string-array>
+
+    <string-array name="keypad_mapping_labels">
+        <item>ESC</item>
+        <item>TAB</item>
+        <item>CTRL</item>
+        <item>ALT</item>
+        <item>META</item>
+        <item>F1</item>
+        <item>F2</item>
+        <item>F3</item>
+        <item>F4</item>
+        <item>F5</item>
+        <item>F6</item>
+        <item>F7</item>
+        <item>F8</item>
+        <item>F9</item>
+        <item>F10</item>
+        <item>HOME</item>
+        <item>END</item>
+        <item>PGUP</item>
+        <item>PGDN</item>
+        <item>INS</item>
+        <item>DEL</item>
+        <item>↑</item>
+        <item>↓</item>
+        <item>←</item>
+        <item>→</item>
+        <item>CTRL+C</item>
+        <item>CTRL+Z</item>
+        <item>CTRL+D</item>
+        <item>CTRL+L</item>
+        <item>|</item>
+        <item>/</item>
+        <item>-</item>
+        <item>=</item>
+        <item>~</item>
+        <item>[</item>
+        <item>]</item>
+        <item>{</item>
+        <item>}</item>
+        <item>&lt;</item>
+        <item>&gt;</item>
+        <item>&amp;</item>
+        <item>+</item>
+        <item>*</item>
+        <item>%</item>
+        <item>`</item>
+    </string-array>
+
+    <string-array name="language_options">
+        <item>跟随系统</item>
+        <item>中文 (简体)</item>
+        <item>English</item>
+    </string-array>
+</resources>

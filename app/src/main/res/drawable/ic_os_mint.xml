@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <path
+        android:fillColor="#000000"
+        
+        android:pathData="M58 63v90c.1 22.1 17.9 39.9 40 40h60c22.1-.1 39.9-17.9 40-40v-50c-.1-16.5-13.5-29.9-30-30-7.4 0-14.5 2.8-20 7.9-5.5-5-12.6-7.8-20-7.9-16.5.1-29.9 13.5-30 30v50h20v-50c0-5.5 4.5-10 10-10s10 4.5 10 10v50h20v-50c0-5.5 4.5-10 10-10s10 4.5 10 10v50c.1 11-8.8 19.9-19.7 20H98c-11 .1-19.9-8.8-20-19.7V63z"/>
+</vector>

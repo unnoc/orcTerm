@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_search"
+        android:icon="@drawable/ic_action_keyboard"
+        android:title="Search"
+        app:actionViewClass="androidx.appcompat.widget.SearchView"
+        app:showAsAction="ifRoom|collapseActionView" />
+    <item
+        android:id="@+id/action_sort"
+        android:icon="@drawable/ic_action_storage"
+        android:title="Sort By"
+        app:showAsAction="ifRoom">
+        <menu>
+            <item android:id="@+id/sort_name" android:title="Hostname" />
+            <item android:id="@+id/sort_ip" android:title="IP Address" />
+            <item android:id="@+id/sort_os" android:title="OS Version" />
+            <item android:id="@+id/sort_status" android:title="Status" />
+        </menu>
+    </item>
+    <item
+        android:id="@+id/action_profile"
+        android:icon="@drawable/ic_action_settings"
+        android:title="Profile"
+        app:showAsAction="ifRoom" />
+</menu>

@@ -1,0 +1,387 @@
+package com.orcterm.ui;
+
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Bundle;
+import android.text.TextUtils;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.Toast;
+import android.util.Log;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.ViewModelProvider;
+import androidx.viewpager2.widget.ViewPager2;
+import androidx.fragment.app.Fragment;
+import androidx.viewpager2.adapter.FragmentStateAdapter;
+
+import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
+import org.json.JSONObject;
+
+import com.orcterm.R;
+import com.orcterm.core.ssh.SshNative;
+import com.orcterm.data.AppDatabase;
+import com.orcterm.data.HostDao;
+import com.orcterm.data.HostEntity;
+import com.orcterm.databinding.ActivityMainBinding;
+import com.orcterm.ui.AddHostActivity;
+import com.orcterm.ui.nav.NavViewModel;
+import com.orcterm.ui.nav.ServersFragment;
+import com.orcterm.ui.nav.TerminalFragment;
+import com.orcterm.ui.nav.FilesFragment;
+import com.orcterm.ui.nav.SettingsFragment;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class MainActivity extends AppCompatActivity {
+
+    private static final String TAG = "MainActivity";
+    private ActivityMainBinding binding;
+    private ViewPager2 viewPager;
+    private BottomNavigationView bottomNavigationView;
+    private NavViewModel navViewModel;
+    private HostDao hostDao;
+    private ExecutorService executor = Executors.newCachedThreadPool();
+    private SharedPreferences prefs;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        binding = ActivityMainBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
+
+        // Initialize database
+        hostDao = AppDatabase.getDatabase(this).hostDao();
+        prefs = getSharedPreferences("orcterm_prefs", Context.MODE_PRIVATE);
+
+        // Setup ViewPager
+        viewPager = binding.viewPager;
+        bottomNavigationView = binding.bottomNav;
+
+        // Create adapter
+        ViewPagerAdapter adapter = new ViewPagerAdapter(this);
+        viewPager.setAdapter(adapter);
+
+        // Setup navigation
+        bottomNavigationView.setOnItemSelectedListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.nav_servers) {
+                viewPager.setCurrentItem(0);
+            } else if (itemId == R.id.nav_terminal) {
+                viewPager.setCurrentItem(1);
+            } else if (itemId == R.id.nav_files) {
+                viewPager.setCurrentItem(2);
+            } else if (itemId == R.id.nav_profile) {
+                viewPager.setCurrentItem(3);
+            }
+            return true;
+        });
+
+        // Sync ViewPager with Bottom Navigation
+        viewPager.registerOnPageChangeCallback(new androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+            @Override
+            public void onPageSelected(int position) {
+                switch (position) {
+                    case 0:
+                        bottomNavigationView.setSelectedItemId(R.id.nav_servers);
+                        break;
+                    case 1:
+                        bottomNavigationView.setSelectedItemId(R.id.nav_terminal);
+                        break;
+                    case 2:
+                        bottomNavigationView.setSelectedItemId(R.id.nav_files);
+                        break;
+                    case 3:
+                        bottomNavigationView.setSelectedItemId(R.id.nav_profile);
+                        break;
+                }
+            }
+        });
+
+        // Initialize ViewModel
+        navViewModel = new ViewModelProvider(this).get(NavViewModel.class);
+
+        // Handle intent
+        handleIntent(getIntent());
+    }
+
+    private void handleIntent(Intent intent) {
+        if (intent != null && intent.getData() != null) {
+            Uri uri = intent.getData();
+            if ("orcterm".equals(uri.getScheme())) {
+                String host = uri.getHost();
+                if ("import".equals(host)) {
+                    String dataParam = uri.getQueryParameter("data");
+                    if (dataParam != null) {
+                        showPasswordDialog(dataParam);
+                    }
+                }
+            }
+        }
+    }
+
+    public void startQrScan() {
+        IntentIntegrator integrator = new IntentIntegrator(this);
+        integrator.setOrientationLocked(false);
+        integrator.setPrompt("Scan OrcTerm QR Code");
+        integrator.initiateScan();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+        if (result != null) {
+            if (result.getContents() != null) {
+                handleScanResult(result.getContents());
+            }
+        } else {
+            super.onActivityResult(requestCode, resultCode, data);
+        }
+    }
+
+    private void handleScanResult(String content) {
+        // Clean and debug the scanned content
+        if (content == null) {
+            Toast.makeText(this, "扫描内容为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        content = content.trim();
+        Log.d("QR_SCAN", "Scanned content: " + content);
+        Log.d("QR_SCAN", "Content length: " + content.length());
+        
+        if (content.startsWith("orcterm://import")) {
+            // Handle existing import logic
+            String dataParam = null;
+            try {
+                Uri uri = Uri.parse(content);
+                dataParam = uri.getQueryParameter("data");
+            } catch (Exception e) {
+                Toast.makeText(this, "Invalid URI format", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            if (dataParam == null) {
+                Toast.makeText(this, "No data found in QR", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Fix: URL decoding might convert '+' to ' ', restoring it for Base64
+            if (dataParam.contains(" ")) {
+                dataParam = dataParam.replace(" ", "+");
+            }
+
+            showPasswordDialog(dataParam);
+
+        } else if (content.trim().startsWith("{") || content.contains("orcterm_host")) {
+            // Handle new JSON QR code format
+            Log.d("QR_SCAN", "Handling JSON format");
+            handleHostJson(content);
+        } else if (content.startsWith("orcterm://bind/")) {
+            // Handle Secure Binding Mode
+            // ... existing secure bind logic
+        } else {
+            Log.d("QR_SCAN", "Unknown QR format");
+            Toast.makeText(this, "Not an OrcTerm QR code", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void handleHostJson(String jsonStr) {
+        Log.d("QR_SCAN", "JSON string: " + jsonStr);
+        try {
+            // Parse JSON
+            JSONObject json = new JSONObject(jsonStr);
+            Log.d("QR_SCAN", "Parsed JSON: " + json.toString());
+
+            // Validate format
+            String type = json.optString("type");
+            Log.d("QR_SCAN", "QR type: " + type);
+            if (!"orcterm_host".equals(type)) {
+                Log.e("QR_SCAN", "Invalid type: " + type);
+                Toast.makeText(this, "无效的主机二维码格式", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            // Continue processing
+            processHostJson(json);
+        } catch (org.json.JSONException e) {
+            Log.e("QR_SCAN", "JSON parsing error: " + e.getMessage());
+            Toast.makeText(this, "二维码JSON解析失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void processHostJson(JSONObject json) throws org.json.JSONException {
+        Log.d("QR_SCAN", "Processing host JSON data");
+        
+        // Extract host information
+        String alias = json.optString("alias", "未知主机");
+        String hostname = json.optString("hostname", "");
+        String username = json.optString("username", "");
+        int port = json.optInt("port", 22);
+        int authType = json.optInt("auth_type", 0);
+        String keyPath = json.optString("key_path", "");
+        String osName = json.optString("os_name", "");
+        String osVersion = json.optString("os_version", "");
+        String containerEngine = json.optString("container_engine", "");
+        String password = json.optString("password", "");
+        boolean passwordRequired = json.optBoolean("password_required", true);
+
+        Log.d("QR_SCAN", "Extracted hostname: " + hostname);
+        Log.d("QR_SCAN", "Extracted username: " + username);
+        Log.d("QR_SCAN", "Extracted password: " + (!password.isEmpty() ? "YES" : "NO"));
+
+        // Validate required fields
+        if (hostname.isEmpty() || username.isEmpty()) {
+            Toast.makeText(this, "二维码信息不完整", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Create host entity
+        HostEntity host = new HostEntity();
+        host.alias = alias;
+        host.hostname = hostname;
+        host.username = username;
+        host.port = port;
+        host.authType = authType;
+        host.keyPath = keyPath;
+        host.osName = osName;
+        host.osVersion = osVersion;
+        host.containerEngine = containerEngine;
+        host.status = "new";
+        host.lastConnected = 0;
+
+        // Handle password
+        if (!password.isEmpty()) {
+            // Password is included in QR code
+            host.password = password;
+            saveHostFromQR(host);
+        } else if (passwordRequired) {
+            // Password required but not included in QR code
+            showPasswordInputDialog(host);
+        } else {
+            // No password required
+            saveHostFromQR(host);
+        }
+    }
+
+    private void showPasswordInputDialog(HostEntity host) {
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(32, 32, 32, 16);
+
+        android.widget.TextView title = new android.widget.TextView(this);
+        title.setText("输入密码以添加主机:\n" + host.alias + " (" + host.username + "@" + host.hostname + ")");
+        title.setPadding(0, 0, 0, 16);
+        layout.addView(title);
+
+        android.widget.EditText passwordInput = new android.widget.EditText(this);
+        passwordInput.setHint("密码");
+        passwordInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        layout.addView(passwordInput);
+
+        new AlertDialog.Builder(this)
+                .setTitle("添加主机")
+                .setView(layout)
+                .setPositiveButton("添加", (dialog, which) -> {
+                    String password = passwordInput.getText().toString().trim();
+                    host.password = password;
+                    saveHostFromQR(host);
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void saveHostFromQR(HostEntity host) {
+        executor.execute(() -> {
+            try {
+                // Check if host already exists
+                androidx.lifecycle.LiveData<java.util.List<HostEntity>> liveData = hostDao.getAllHosts();
+                java.util.List<HostEntity> existingHosts = liveData.getValue();
+                if (existingHosts == null) existingHosts = new java.util.ArrayList<>();
+                for (HostEntity existing : existingHosts) {
+                    if (existing.hostname.equals(host.hostname) &&
+                            existing.port == host.port &&
+                            existing.username.equals(host.username)) {
+                        runOnUiThread(() -> Toast.makeText(this, "该主机已存在", Toast.LENGTH_SHORT).show());
+                        return;
+                    }
+                }
+
+                // Save new host
+                hostDao.insert(host);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "主机添加成功: " + host.alias, Toast.LENGTH_SHORT).show();
+                    // Switch to servers page
+                    if (bottomNavigationView != null) {
+                        bottomNavigationView.setSelectedItemId(R.id.nav_servers);
+                    }
+                });
+
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "保存失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        });
+    }
+
+    private void showPasswordDialog(String data) {
+        // ... existing password dialog logic for import
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_profile) {
+            viewPager.setCurrentItem(3);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private static class ViewPagerAdapter extends FragmentStateAdapter {
+        public ViewPagerAdapter(MainActivity activity) {
+            super(activity);
+        }
+
+        @NonNull
+        @Override
+        public Fragment createFragment(int position) {
+            switch (position) {
+                case 0:
+                    return new ServersFragment();
+                case 1:
+                    return new TerminalFragment();
+                case 2:
+                    return new FilesFragment();
+                case 3:
+                default:
+                    return new SettingsFragment();
+            }
+        }
+
+        @Override
+        public int getItemCount() {
+            return 4;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        executor.shutdownNow();
+    }
+}

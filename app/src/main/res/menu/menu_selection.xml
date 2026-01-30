@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_diagnose_batch"
+        android:title="Diagnose"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_reboot_batch"
+        android:title="Reboot"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_shutdown_batch"
+        android:title="Shutdown"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_delete_batch"
+        android:icon="@drawable/ic_action_close"
+        android:title="Delete"
+        app:showAsAction="always" />
+</menu>

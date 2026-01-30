@@ -1,0 +1,307 @@
+package com.orcterm.core.terminal;
+
+import android.os.Handler;
+import android.os.Looper;
+
+import com.orcterm.core.transport.LocalTransport;
+import com.orcterm.core.transport.SshTransport;
+import com.orcterm.core.transport.TelnetTransport;
+import com.orcterm.core.transport.Transport;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
+import android.util.Log;
+
+/**
+ * 终端会话管理类
+ * 管理会话生命周期和数据流。
+ * 负责在网络层 (Transport) 和逻辑层 (Logic) 之间协调数据。
+ */
+public class TerminalSession {
+
+    /**
+     * 会话监听器接口
+     * 用于接收连接状态变化和数据接收的通知。
+     */
+    public interface SessionListener {
+        /** 连接成功 */
+        void onConnected();
+        /** 连接断开 */
+        void onDisconnected();
+        /** 接收到数据 */
+        void onDataReceived(String data);
+        /** 发生错误 */
+        void onError(String message);
+    }
+
+    private Transport transport;
+    private final ExecutorService executor;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    
+    // 帧率限制相关字段
+    private long lastFrameTime = 0;
+    private static final long MIN_FRAME_TIME = 16; // 60fps (1000ms / 60 = 16.67ms)
+    private final StringBuilder pendingData = new StringBuilder();
+    private boolean pendingUpdateScheduled = false;
+    
+    // 创建带日志功能的自定义线程池
+    private static final ThreadFactory TERMINAL_THREAD_FACTORY = new ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, "TerminalSession-Thread");
+            // 只在首次创建时记录一次日志，避免重复输出
+            return t;
+        }
+    };
+    
+    // 初始化带日志功能的线程池
+    {
+        this.executor = Executors.newSingleThreadExecutor(TERMINAL_THREAD_FACTORY);
+    }
+    private final AtomicBoolean isConnected = new AtomicBoolean(false);
+    
+    private SessionListener listener;
+    
+    // 连接配置
+    private String host;
+    private int port;
+    private String username;
+    private String password;
+    private int authType;
+    private String keyPath;
+
+    public TerminalSession() {
+    }
+
+    /**
+     * 设置会话监听器
+     *
+     * @param listener 监听器实例
+     */
+    public void setListener(SessionListener listener) {
+        this.listener = listener;
+    }
+
+    /**
+     * 发起连接
+     *
+     * @param host     目标主机
+     * @param port     目标端口
+     * @param user     用户名
+     * @param pass     密码
+     * @param authType 认证类型
+     * @param keyPath  密钥路径
+     */
+    public void connect(String host, int port, String user, String pass, int authType, String keyPath) {
+        this.host = host;
+        this.port = port;
+        this.username = user;
+        this.password = pass;
+        this.authType = authType;
+        this.keyPath = keyPath;
+
+        Log.v("TerminalSession", "提交连接任务到线程池");
+        executor.execute(this::connectInternal);
+    }
+
+    /**
+     * 调整终端大小
+     *
+     * @param cols 列数
+     * @param rows 行数
+     */
+    public void resize(int cols, int rows) {
+        if (isConnected.get() && transport != null) {
+            executor.execute(() -> {
+                Log.v("TerminalSession", "在线程中调整终端大小: " + cols + "x" + rows + ", 线程: " + Thread.currentThread().getName());
+                transport.resize(cols, rows);
+            });
+        }
+    }
+
+    /**
+     * 内部连接逻辑
+     * 根据配置选择合适的 Transport 实现并建立连接。
+     */
+    private void connectInternal() {
+        Log.i("TerminalSession", "开始内部连接，主机: " + host + ", 端口: " + port);
+        try {
+            // 根据 Host 和 Port 判断协议类型
+            if ("local".equalsIgnoreCase(host) || "localhost".equalsIgnoreCase(host) && (port == 0 || port == -1)) {
+                 transport = new LocalTransport();
+                 Log.i("TerminalSession", "使用本地传输协议");
+            } else if (port == 23) {
+                 transport = new TelnetTransport();
+                 Log.i("TerminalSession", "使用Telnet传输协议");
+            } else {
+                 transport = new SshTransport();
+                 Log.i("TerminalSession", "使用SSH传输协议");
+            }
+
+            transport.connect(host, port, username, password, authType, keyPath);
+            Log.i("TerminalSession", "Transport连接成功");
+            
+            isConnected.set(true);
+            Log.i("TerminalSession", "设置连接状态为true");
+            notifyConnected();
+            
+            // 启动读取循环
+            Log.i("TerminalSession", "启动读取循环");
+            startReading();
+
+        } catch (Exception e) {
+            Log.e("TerminalSession", "连接内部异常: " + e.getMessage(), e);
+            notifyError("Error: " + e.getMessage());
+            disconnect();
+        }
+    }
+
+    /**
+     * 开始读取数据循环
+     * 持续从 Transport 读取数据并通知监听器。
+     */
+    private void startReading() {
+        Log.i("TerminalSession", "开始读取数据循环");
+        byte[] buffer = new byte[8192];
+        while (isConnected.get()) {
+            try {
+                int read = transport.read(buffer);
+                if (read > 0) {
+                    String data = new String(buffer, 0, read);
+                    Log.d("TerminalSession", "读取到 " + read + " 字节数据");
+                    notifyData(data);
+                } else {
+                     // 非阻塞传输没有数据，稍作休眠
+                     try {
+                         Thread.sleep(10); 
+                     } catch (InterruptedException e) {
+                         Log.d("TerminalSession", "读取循环被中断");
+                         break;
+                     }
+                }
+            } catch (Exception e) {
+                Log.e("TerminalSession", "读取数据异常: " + e.getMessage(), e);
+                if (isConnected.get()) {
+                    notifyError("Read error: " + e.getMessage());
+                }
+                break;
+            }
+        }
+        Log.i("TerminalSession", "退出读取循环，执行断开连接");
+        disconnect();
+    }
+
+    /**
+     * 发送数据
+     *
+     * @param data 要发送的字符串数据
+     */
+    public void write(String data) {
+        if (!isConnected.get() || transport == null) {
+            Log.w("TerminalSession", "连接未就绪或transport为null，跳过发送");
+            return;
+        }
+        //executor.submit(() -> {
+            Log.v("TerminalSession", "在线程中发送数据: " + Thread.currentThread().getName());
+            try {
+                transport.write(data.getBytes());
+            } catch (Exception e) {
+                Log.e("TerminalSession", "发送数据失败: " + e.getMessage(), e);
+                notifyError("Write error: " + e.getMessage());
+            }
+        //});
+    }
+    
+    /**
+     * 发送特殊按键
+     * (待实现: 将特殊按键映射为 ANSI 序列)
+     *
+     * @param key 按键代码
+     */
+    public void sendSpecialKey(int key) {
+        // Map special keys to ANSI sequences
+        // TODO: Implement full mapping
+    }
+
+    /**
+     * 开启本地端口转发 (仅 SSH)
+     *
+     * @param localPort  本地端口
+     * @param targetHost 目标主机
+     * @param targetPort 目标端口
+     * @throws Exception 如果不支持转发或开启失败
+     */
+    public void startLocalForwarding(int localPort, String targetHost, int targetPort) throws Exception {
+        if (transport instanceof SshTransport) {
+            ((SshTransport) transport).startLocalForwarding(localPort, targetHost, targetPort);
+        } else {
+            throw new UnsupportedOperationException("Only SSH supports port forwarding");
+        }
+    }
+
+    /**
+     * 断开连接
+     * 关闭 Transport 并释放资源。
+     */
+    public void disconnect() {
+        isConnected.set(false);
+        executor.execute(() -> {
+            Log.v("TerminalSession", "在线程中执行断开连接: " + Thread.currentThread().getName());
+            if (transport != null) {
+                transport.disconnect();
+                transport = null;
+            }
+            notifyDisconnected();
+        });
+    }
+
+    // --- 通知辅助方法 ---
+
+    private void notifyConnected() {
+        if (listener != null) mainHandler.post(() -> listener.onConnected());
+    }
+
+    private void notifyDisconnected() {
+        if (listener != null) mainHandler.post(() -> listener.onDisconnected());
+    }
+
+    private void notifyData(String data) {
+        if (listener == null) return;
+        
+        long now = System.currentTimeMillis();
+        if (now - lastFrameTime >= MIN_FRAME_TIME) {
+            // 立即发送数据
+            lastFrameTime = now;
+            mainHandler.post(() -> listener.onDataReceived(data));
+        } else {
+            // 批量处理数据以减少渲染频率
+            synchronized (pendingData) {
+                pendingData.append(data);
+                if (!pendingUpdateScheduled) {
+                    pendingUpdateScheduled = true;
+                    long delay = MIN_FRAME_TIME - (now - lastFrameTime);
+                    mainHandler.postDelayed(() -> {
+                        synchronized (pendingData) {
+                            if (pendingData.length() > 0) {
+                                String batchData = pendingData.toString();
+                                pendingData.setLength(0);
+                                listener.onDataReceived(batchData);
+                            }
+                            pendingUpdateScheduled = false;
+                        }
+                    }, delay);
+                }
+            }
+        }
+    }
+
+    private void notifyError(String msg) {
+        if (listener != null) mainHandler.post(() -> listener.onError(msg));
+    }
+
+    public boolean isConnected() {
+        return isConnected.get();
+    }
+}

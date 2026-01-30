@@ -1,0 +1,242 @@
+# Gradle files
+.gradle/
+build/
+gradle/
+gradlew
+gradlew.bat
+gradlew.bat
+asset/
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# Android Studio generated files and folders
+*.iml
+.idea/
+.DS_Store
+.externalNativeBuild
+.cxx/
+local.*
+
+# Keystore files
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+
+# Google Services (e.g. APIs or Firebase)
+google-services.json
+
+# Android Profiling
+*.hprof
+
+# Built application files
+*.apk
+*.aab
+*.aar
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# External libraries
+/libs/
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+
+# Log files
+*.log
+*.log.*
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+*~
+
+# Build outputs
+/app/build/
+/app/release/
+/app/debug/
+/build/
+
+# Native build outputs
+app/.cxx/
+app/build/
+
+# Capture files
+capture/
+
+# Test outputs
+/test-results/
+/androidTest-results/
+
+# Lint files
+lint/intermediates/
+lint/generated/
+lint/outputs/
+
+# Backup files
+*.bak
+*.backup
+
+# Local development files
+captures/
+gradle.properties
+
+# APK signing files
+.keystore
+*.properties
+
+# Maven
+target/
+pom.xml
+pom.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# NDK
+obj/
+
+# IntelliJ
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.classpath
+.project
+.cproject
+.settings/
+
+# Environment files
+.env
+.env.local
+
+# Database files (if they contain sensitive data)
+*.db
+*.db-shm
+*.db-wal
+
+# Security files
+*.pem
+*.crt
+*.key
+
+# Package files
+*.zip
+*.tar
+*.gz
+*.rar
+
+# Documentation build outputs
+docs/build/
+
+# UI testing
+ui-test/
+fastlane/
+DerivedData/
+
+# Bitbucket
+#bitbucket/
+
+# Github
+#github/
+
+# Build cache
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtualization
+.vagrant/
+
+# IDE temp files
+*.orig
+*.rej
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.cache
+.elc
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Docker
+.dockerignore
+
+# Kubernetes
+*.kubeconfig
+
+# Custom temp files
+dev/
+temp/
+tmp/
+
+# Generated documentation
+docs/_build/
+docs/build/
+
+# Coverage reports
+coverage/
+reports/
+
+# Profiling
+*.prof
+*.pprof
+
+# Local configuration overrides
+config.local.*
+settings.local.*
+
+# SDK tools
+sdk/
+tools/
+
+# Archive files
+*.zip.*
+*.tar.*
+*.tgz
+
+# Lock files
+*.lock
+*.trae
+*.

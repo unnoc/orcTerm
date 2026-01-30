@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <application
+        android:name=".OrcTermApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.OrcTerm"
+        tools:targetApi="31">
+        
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.AddHostActivity"
+            android:label="Add Host"
+            android:parentActivityName=".ui.MainActivity" />
+
+        <activity
+            android:name=".ui.TerminalActivity"
+            android:label="Terminal"
+            android:theme="@style/Theme.OrcTerm"
+            android:windowSoftInputMode="adjustResize" />
+            
+        <activity
+            android:name=".ui.DockerActivity"
+            android:label="Docker Containers"
+            android:parentActivityName=".ui.MainActivity"
+            android:theme="@style/Theme.OrcTerm" />
+
+        <activity
+            android:name=".ui.DockerContainerDetailActivity"
+            android:label="Container Detail"
+            android:parentActivityName=".ui.DockerActivity"
+            android:theme="@style/Theme.OrcTerm" />
+            
+        <activity
+            android:name=".ui.DockerLogsActivity"
+            android:label="Container Logs"
+            android:parentActivityName=".ui.DockerActivity"
+            android:theme="@style/Theme.OrcTerm" />
+
+        <activity
+            android:name=".ui.SftpActivity"
+            android:label="SFTP"
+            android:parentActivityName=".ui.MainActivity"
+            android:theme="@style/Theme.OrcTerm" />
+
+        <activity
+            android:name=".ui.MediaPreviewActivity"
+            android:label="Media Preview"
+            android:theme="@style/Theme.OrcTerm" />
+
+        <activity
+            android:name=".ui.MonitorActivity"
+            android:label="System Monitor"
+            android:parentActivityName=".ui.MainActivity"
+            android:theme="@style/Theme.OrcTerm" />
+
+        <activity
+            android:name=".ui.ProcessDetailActivity"
+            android:label="Process Detail"
+            android:parentActivityName=".ui.MonitorActivity"
+            android:theme="@style/Theme.OrcTerm" />
+
+        <activity
+            android:name=".ui.HostDetailActivity"
+            android:label="Host Detail"
+            android:parentActivityName=".ui.MainActivity"
+            android:theme="@style/Theme.OrcTerm" />
+
+        <activity
+            android:name=".ui.SettingsDetailActivity"
+            android:label="@string/settings_title"
+            android:parentActivityName=".ui.MainActivity"
+            android:theme="@style/Theme.OrcTerm" />
+
+        <activity
+            android:name=".ui.EditorActivity"
+            android:label="Editor"
+            android:theme="@style/Theme.OrcTerm" />
+
+        <service
+            android:name=".ui.SftpTransferService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <receiver
+            android:name=".widget.HostWidgetProvider"
+            android:exported="true"
+            android:label="@string/title_hosts">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.orcterm.widget.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_hosts_info" />
+        </receiver>
+
+        <service
+            android:name=".widget.HostWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+        <receiver
+            android:name=".widget.ServerWidgetProvider"
+            android:exported="true"
+            android:label="Server Status">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_server_info" />
+        </receiver>
+
+        <activity
+            android:name=".widget.ServerWidgetConfigActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

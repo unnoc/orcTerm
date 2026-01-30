@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_select_all"
+        android:title="@string/file_action_select_all"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_download"
+        android:title="@string/action_download"
+        android:icon="@drawable/ic_action_cloud_download"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_copy"
+        android:title="@string/file_action_copy"
+        android:icon="@drawable/ic_action_content_copy"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_cut"
+        android:title="@string/file_action_cut"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_compress"
+        android:title="@string/file_action_compress"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_extract"
+        android:title="@string/action_extract"
+        android:icon="@drawable/ic_action_folder"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_delete"
+        android:title="@string/file_action_delete"
+        android:icon="@drawable/ic_action_delete"
+        app:showAsAction="ifRoom" />
+</menu>
