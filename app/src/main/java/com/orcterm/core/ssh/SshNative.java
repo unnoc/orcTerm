@@ -108,6 +108,20 @@ public class SshNative {
      */
     public native void disconnect(long handle);
 
+    public native void setSessionTimeout(long handle, int timeoutMs);
+
+    public native void setSessionReadTimeout(long handle, int timeoutSec);
+
+    public native void setKeepaliveConfig(long handle, boolean wantReply, int intervalSec);
+
+    public native int sendKeepalive(long handle);
+
+    public native int knownHostsCheck(long handle, String host, int port, String knownHostsPath);
+
+    public native int knownHostsAdd(long handle, String host, int port, String knownHostsPath, String comment);
+
+    public native String getHostKeyInfo(long handle);
+
     /**
      * 生成 Ed25519 密钥对
      *

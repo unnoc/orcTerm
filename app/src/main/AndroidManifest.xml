@@ -31,6 +31,7 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -46,8 +47,16 @@
         <activity
             android:name=".ui.TerminalActivity"
             android:label="Terminal"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard|screenLayout|uiMode|density"
             android:theme="@style/Theme.OrcTerm"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".ui.ThemeEditorActivity"
+            android:label="@string/settings_terminal_theme_editor_title"
+            android:parentActivityName=".ui.TerminalActivity"
+            android:theme="@style/Theme.OrcTerm" />
             
         <activity
             android:name=".ui.DockerActivity"

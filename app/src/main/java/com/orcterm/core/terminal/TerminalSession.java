@@ -2,17 +2,19 @@ package com.orcterm.core.terminal;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 
 import com.orcterm.core.transport.LocalTransport;
 import com.orcterm.core.transport.SshTransport;
 import com.orcterm.core.transport.TelnetTransport;
 import com.orcterm.core.transport.Transport;
+import com.orcterm.core.transport.HostKeyVerifier;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
-import android.util.Log;
+import com.orcterm.core.transport.HostKeyVerifier;
 
 /**
  * 终端会话管理类
@@ -37,6 +39,7 @@ public class TerminalSession {
     }
 
     private Transport transport;
+    private TerminalEmulator emulator;
     private final ExecutorService executor;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     
@@ -71,6 +74,7 @@ public class TerminalSession {
     private String password;
     private int authType;
     private String keyPath;
+    private HostKeyVerifier hostKeyVerifier;
 
     public TerminalSession() {
     }
@@ -82,6 +86,10 @@ public class TerminalSession {
      */
     public void setListener(SessionListener listener) {
         this.listener = listener;
+    }
+
+    public void setHostKeyVerifier(HostKeyVerifier verifier) {
+        this.hostKeyVerifier = verifier;
     }
 
     /**
@@ -105,6 +113,24 @@ public class TerminalSession {
         Log.v("TerminalSession", "提交连接任务到线程池");
         executor.execute(this::connectInternal);
     }
+    
+    // 接管已有 SSH 句柄并启动读取循环
+    public void attachExistingSshHandle(long handle, String host, int port, String user, String pass, int authType, String keyPath) throws Exception {
+        this.host = host;
+        this.port = port;
+        this.username = user;
+        this.password = pass;
+        this.authType = authType;
+        this.keyPath = keyPath;
+        transport = new SshTransport();
+        if (hostKeyVerifier != null) {
+            ((SshTransport) transport).setHostKeyVerifier(hostKeyVerifier);
+        }
+        ((SshTransport) transport).attachExistingHandle(handle, 80, 24);
+        isConnected.set(true);
+        notifyConnected();
+        executor.execute(this::startReading);
+    }
 
     /**
      * 调整终端大小
@@ -119,6 +145,10 @@ public class TerminalSession {
                 transport.resize(cols, rows);
             });
         }
+    }
+
+    public long getHandle() {
+        return (transport != null) ? transport.getHandle() : 0;
     }
 
     /**
@@ -137,6 +167,9 @@ public class TerminalSession {
                  Log.i("TerminalSession", "使用Telnet传输协议");
             } else {
                  transport = new SshTransport();
+                 if (hostKeyVerifier != null) {
+                     ((SshTransport) transport).setHostKeyVerifier(hostKeyVerifier);
+                 }
                  Log.i("TerminalSession", "使用SSH传输协议");
             }
 
@@ -180,6 +213,9 @@ public class TerminalSession {
                          Log.d("TerminalSession", "读取循环被中断");
                          break;
                      }
+                }
+                if (transport instanceof SshTransport) {
+                    ((SshTransport) transport).sendKeepalive();
                 }
             } catch (Exception e) {
                 Log.e("TerminalSession", "读取数据异常: " + e.getMessage(), e);
@@ -268,13 +304,18 @@ public class TerminalSession {
     }
 
     private void notifyData(String data) {
-        if (listener == null) return;
-        
         long now = System.currentTimeMillis();
         if (now - lastFrameTime >= MIN_FRAME_TIME) {
             // 立即发送数据
             lastFrameTime = now;
-            mainHandler.post(() -> listener.onDataReceived(data));
+            mainHandler.post(() -> {
+                if (emulator != null) {
+                    emulator.write(data);
+                }
+                if (listener != null) {
+                    listener.onDataReceived(data);
+                }
+            });
         } else {
             // 批量处理数据以减少渲染频率
             synchronized (pendingData) {
@@ -287,7 +328,12 @@ public class TerminalSession {
                             if (pendingData.length() > 0) {
                                 String batchData = pendingData.toString();
                                 pendingData.setLength(0);
-                                listener.onDataReceived(batchData);
+                                if (emulator != null) {
+                                    emulator.write(batchData);
+                                }
+                                if (listener != null) {
+                                    listener.onDataReceived(batchData);
+                                }
                             }
                             pendingUpdateScheduled = false;
                         }
@@ -303,5 +349,55 @@ public class TerminalSession {
 
     public boolean isConnected() {
         return isConnected.get();
+    }
+    
+    /**
+     * 获取主机名
+     */
+    public String getHost() {
+        return host;
+    }
+    
+    /**
+     * 获取端口
+     */
+    public int getPort() {
+        return port;
+    }
+    
+    /**
+     * 获取用户名
+     */
+    public String getUsername() {
+        return username;
+    }
+
+    /**
+     * 获取认证类型
+     */
+    public int getAuthType() {
+        return authType;
+    }
+
+    /**
+     * 获取密钥路径
+     */
+    public String getKeyPath() {
+        return keyPath;
+    }
+
+    /**
+     * 获取密码
+     */
+    public String getPassword() {
+        return password;
+    }
+
+    public void setEmulator(TerminalEmulator emulator) {
+        this.emulator = emulator;
+    }
+
+    public TerminalEmulator getEmulator() {
+        return emulator;
     }
 }

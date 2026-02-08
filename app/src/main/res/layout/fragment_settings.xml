@@ -9,22 +9,60 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:paddingTop="8dp"
         android:paddingBottom="32dp">
 
-        <!-- Header -->
-        <!--<TextView
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/settings_search_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="设置"
-            android:textSize="32sp"
-            android:textStyle="bold"
-            android:padding="16dp"
-            android:textColor="?attr/colorOnBackground"/>-->
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="12dp"
+            android:hint="@string/settings_search_hint"
+            app:boxBackgroundMode="outline"
+            app:startIconDrawable="@drawable/ic_action_search">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/settings_search_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:imeOptions="actionSearch"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView
+            style="@style/SettingsHeader"
+            android:text="@string/settings_section_connection" />
 
         <include layout="@layout/item_setting"
             android:id="@+id/setting_ssh_manage"/>
 
         <View style="@style/SettingsDivider"/>
+
+        <include layout="@layout/item_setting"
+            android:id="@+id/setting_session_policy"/>
+
+        <View style="@style/SettingsDivider"/>
+
+        <TextView
+            style="@style/SettingsHeader"
+            android:text="@string/settings_section_terminal_display" />
+
+        <include layout="@layout/item_setting"
+            android:id="@+id/setting_terminal_settings"/>
+
+        <View style="@style/SettingsDivider"/>
+
+        <include layout="@layout/item_setting"
+            android:id="@+id/setting_theme_display"/>
+
+        <View style="@style/SettingsDivider"/>
+
+        <TextView
+            style="@style/SettingsHeader"
+            android:text="@string/settings_section_data" />
 
         <include layout="@layout/item_setting"
             android:id="@+id/setting_cloud_sync"/>
@@ -37,14 +75,13 @@
         <View style="@style/SettingsDivider"/>
 
         <include layout="@layout/item_setting"
-            android:id="@+id/setting_terminal_settings"/>
+            android:id="@+id/setting_backup"/>
 
         <View style="@style/SettingsDivider"/>
 
-        <include layout="@layout/item_setting"
-            android:id="@+id/setting_theme_display"/>
-
-        <View style="@style/SettingsDivider"/>
+        <TextView
+            style="@style/SettingsHeader"
+            android:text="@string/settings_section_general" />
 
         <include layout="@layout/item_setting"
             android:id="@+id/setting_general"/>

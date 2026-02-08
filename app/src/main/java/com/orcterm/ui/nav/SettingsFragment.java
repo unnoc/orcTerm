@@ -14,6 +14,8 @@ import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -27,6 +29,9 @@ import androidx.fragment.app.Fragment;
 
 import com.orcterm.R;
 
+/**
+ * 设置主页入口与概览
+ */
 public class SettingsFragment extends Fragment {
 
     private SharedPreferences prefs;
@@ -58,15 +63,40 @@ public class SettingsFragment extends Fragment {
     }
 
     private void initSettings(View view) {
+        EditText searchInput = view.findViewById(R.id.settings_search_input);
+        if (searchInput != null) {
+            searchInput.setOnFocusChangeListener((v, hasFocus) -> {
+                if (hasFocus) {
+                    searchInput.clearFocus();
+                    openSearch("");
+                }
+            });
+            searchInput.setOnClickListener(v -> {
+                searchInput.clearFocus();
+                openSearch(searchInput.getText() == null ? "" : searchInput.getText().toString());
+            });
+            searchInput.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                    openSearch(v.getText() == null ? "" : v.getText().toString());
+                    return true;
+                }
+                return false;
+            });
+        }
+
         setupItem(view, R.id.setting_ssh_manage, R.drawable.ic_action_computer, getString(R.string.settings_main_ssh_title), getString(R.string.settings_main_ssh_summary), v -> openDetail("ssh"));
+
+        setupItem(view, R.id.setting_terminal_settings, R.drawable.ic_action_terminal, getString(R.string.settings_main_terminal_title), getString(R.string.settings_main_terminal_summary), v -> openDetail("terminal"));
+
+        setupItem(view, R.id.setting_theme_display, R.drawable.ic_action_settings, getString(R.string.settings_main_theme_display_title), getString(R.string.settings_main_theme_display_summary), v -> openDetail("theme_display"));
+
+        setupItem(view, R.id.setting_session_policy, R.drawable.ic_action_computer, getString(R.string.settings_main_session_policy_title), getString(R.string.settings_main_session_policy_summary), v -> openDetail("session_policy"));
 
         setupItem(view, R.id.setting_cloud_sync, R.drawable.ic_action_cloud_upload, getString(R.string.settings_main_cloud_title), getString(R.string.settings_main_cloud_summary), v -> openDetail("cloud_sync"));
 
         setupItem(view, R.id.setting_file_management, R.drawable.ic_action_storage, getString(R.string.settings_main_file_title), getString(R.string.settings_main_file_summary), v -> openDetail("file_management"));
 
-        setupItem(view, R.id.setting_terminal_settings, R.drawable.ic_action_terminal, getString(R.string.settings_main_terminal_title), getString(R.string.settings_main_terminal_summary), v -> openDetail("terminal"));
-
-        setupItem(view, R.id.setting_theme_display, R.drawable.ic_action_settings, getString(R.string.settings_main_theme_display_title), getString(R.string.settings_main_theme_display_summary), v -> openDetail("theme_display"));
+        setupItem(view, R.id.setting_backup, R.drawable.ic_action_storage, getString(R.string.settings_main_backup_title), getString(R.string.settings_main_backup_summary), v -> openDetail("backup"));
 
         setupItem(view, R.id.setting_general, R.drawable.ic_action_settings, getString(R.string.settings_main_general_title), getString(R.string.settings_main_general_summary), v -> openDetail("general"));
     }
@@ -74,6 +104,13 @@ public class SettingsFragment extends Fragment {
     private void openDetail(String page) {
         Intent intent = new Intent(requireContext(), com.orcterm.ui.SettingsDetailActivity.class);
         intent.putExtra("page", page);
+        startActivity(intent);
+    }
+
+    private void openSearch(String query) {
+        Intent intent = new Intent(requireContext(), com.orcterm.ui.SettingsDetailActivity.class);
+        intent.putExtra("page", "search");
+        intent.putExtra("query", query);
         startActivity(intent);
     }
 
@@ -105,10 +142,10 @@ public class SettingsFragment extends Fragment {
     }
 
     private void showFontSizeDialog() {
-        String[] sizes = {"小", "标准", "大", "特大"};
+        String[] sizes = getResources().getStringArray(R.array.font_size_options);
         int current = prefs.getInt("font_size_index", 1);
         new AlertDialog.Builder(requireContext())
-            .setTitle("终端字体大小")
+            .setTitle(getString(R.string.settings_terminal_font_title))
             .setSingleChoiceItems(sizes, current, (dialog, which) -> {
                 prefs.edit().putInt("font_size_index", which).apply();
                 dialog.dismiss();
@@ -118,10 +155,10 @@ public class SettingsFragment extends Fragment {
     }
 
     private void showColorThemeDialog() {
-        String[] themes = {"Default", "Solarized Dark", "Solarized Light", "Monokai"};
+        String[] themes = getResources().getStringArray(R.array.terminal_themes);
         int current = prefs.getInt("terminal_theme_index", 0);
         new AlertDialog.Builder(requireContext())
-            .setTitle("终端配色方案")
+            .setTitle(getString(R.string.settings_terminal_theme_title))
             .setSingleChoiceItems(themes, current, (dialog, which) -> {
                 prefs.edit().putInt("terminal_theme_index", which).apply();
                 dialog.dismiss();
@@ -131,10 +168,10 @@ public class SettingsFragment extends Fragment {
     }
     
     private void showDensityDialog() {
-        String[] densities = {"紧凑", "标准", "宽松"};
+        String[] densities = getResources().getStringArray(R.array.list_density_options);
         int current = prefs.getInt("list_density", 1);
         new AlertDialog.Builder(requireContext())
-            .setTitle("列表布局密度")
+            .setTitle(getString(R.string.settings_theme_density_title))
             .setSingleChoiceItems(densities, current, (dialog, which) -> {
                 prefs.edit().putInt("list_density", which).apply();
                 dialog.dismiss();
@@ -143,40 +180,52 @@ public class SettingsFragment extends Fragment {
     }
     
     private void showTerminalBehaviorDialog() {
-        String[] items = {"回车发送换行", "启用本地回显"};
+        String[] items = getResources().getStringArray(R.array.terminal_behavior_options);
         boolean[] checked = {
             prefs.getBoolean("terminal_enter_newline", true),
-            prefs.getBoolean("terminal_local_echo", false)
+            prefs.getBoolean("terminal_local_echo", false),
+            prefs.getBoolean("terminal_auto_scroll_output", true),
+            prefs.getBoolean("terminal_smooth_scroll", true),
+            prefs.getBoolean("terminal_copy_on_select", true),
+            prefs.getBoolean("terminal_paste_on_tap", false),
+            prefs.getBoolean("terminal_bell_audio", false),
+            prefs.getBoolean("terminal_bell_visual", true)
         };
         new AlertDialog.Builder(requireContext())
-            .setTitle("终端行为设置")
+            .setTitle(getString(R.string.settings_terminal_behavior_title))
             .setMultiChoiceItems(items, checked, (dialog, which, isChecked) -> checked[which] = isChecked)
-            .setPositiveButton("保存", (d, w) -> {
+            .setPositiveButton(getString(R.string.action_save), (d, w) -> {
                 prefs.edit()
                     .putBoolean("terminal_enter_newline", checked[0])
                     .putBoolean("terminal_local_echo", checked[1])
+                    .putBoolean("terminal_auto_scroll_output", checked[2])
+                    .putBoolean("terminal_smooth_scroll", checked[3])
+                    .putBoolean("terminal_copy_on_select", checked[4])
+                    .putBoolean("terminal_paste_on_tap", checked[5])
+                    .putBoolean("terminal_bell_audio", checked[6])
+                    .putBoolean("terminal_bell_visual", checked[7])
                     .apply();
             })
-            .setNegativeButton("取消", null)
+            .setNegativeButton(getString(R.string.action_cancel), null)
             .show();
     }
 
     private void showKeypadMappingDialog() {
-        String[] labels = {"ESC", "TAB", "CTRL", "ALT", "META", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "HOME", "END", "PGUP", "PGDN", "INS", "DEL", "↑", "↓", "←", "→", "CTRL+C", "CTRL+Z", "CTRL+D", "CTRL+L", "|", "/", "-", "=", "~", "[", "]", "{", "}", "<", ">", "&", "+", "*", "%", "`"};
+        String[] labels = getResources().getStringArray(R.array.keypad_mapping_labels);
         java.util.Map<String, String> mappings = readKeypadMapping();
         String[] values = new String[labels.length];
         for (int i = 0; i < labels.length; i++) {
             values[i] = mappings.get(labels[i]);
         }
         new AlertDialog.Builder(requireContext())
-            .setTitle("键盘映射")
+            .setTitle(getString(R.string.settings_terminal_keypad_title))
             .setItems(labels, (d, which) -> showEditKeypadMapping(labels[which], values[which]))
-            .setNeutralButton("重置全部", (d, w) -> {
+            .setNeutralButton(getString(R.string.action_reset_all), (d, w) -> {
                 prefs.edit().remove("terminal_keypad_mapping").apply();
-                Toast.makeText(requireContext(), "已重置", Toast.LENGTH_SHORT).show();
+                Toast.makeText(requireContext(), getString(R.string.action_reset_done), Toast.LENGTH_SHORT).show();
                 updateTerminalSettingSummaries(rootView);
             })
-            .setNegativeButton("关闭", null)
+            .setNegativeButton(getString(R.string.action_close), null)
             .show();
     }
 
@@ -185,15 +234,15 @@ public class SettingsFragment extends Fragment {
         layout.setOrientation(android.widget.LinearLayout.VERTICAL);
         layout.setPadding(32, 24, 32, 8);
         android.widget.TextView hint = new android.widget.TextView(requireContext());
-        hint.setText("输入字符串或转义序列");
+        hint.setText(getString(R.string.settings_terminal_keypad_mapping_hint));
         android.widget.EditText edit = new android.widget.EditText(requireContext());
         edit.setText(current != null ? current : "");
         layout.addView(hint);
         layout.addView(edit);
         new AlertDialog.Builder(requireContext())
-            .setTitle("映射: " + label)
+            .setTitle(getString(R.string.settings_terminal_keypad_mapping_edit_title, label))
             .setView(layout)
-            .setPositiveButton("保存", (d, w) -> {
+            .setPositiveButton(getString(R.string.action_save), (d, w) -> {
                 java.util.Map<String, String> mapping = readKeypadMapping();
                 String value = edit.getText().toString();
                 if (value.isEmpty()) {
@@ -203,7 +252,7 @@ public class SettingsFragment extends Fragment {
                 }
                 persistKeypadMapping(mapping);
             })
-            .setNegativeButton("取消", null)
+            .setNegativeButton(getString(R.string.action_cancel), null)
             .show();
     }
 
@@ -230,7 +279,7 @@ public class SettingsFragment extends Fragment {
             } catch (Exception ignored) {}
         }
         prefs.edit().putString("terminal_keypad_mapping", obj.toString()).apply();
-        Toast.makeText(requireContext(), "已保存", Toast.LENGTH_SHORT).show();
+        Toast.makeText(requireContext(), getString(R.string.action_saved), Toast.LENGTH_SHORT).show();
         updateTerminalSettingSummaries(rootView);
     }
 
@@ -246,6 +295,8 @@ public class SettingsFragment extends Fragment {
         View file = view.findViewById(R.id.setting_file_management);
         View terminal = view.findViewById(R.id.setting_terminal_settings);
         View theme = view.findViewById(R.id.setting_theme_display);
+        View sessionPolicy = view.findViewById(R.id.setting_session_policy);
+        View backup = view.findViewById(R.id.setting_backup);
         View general = view.findViewById(R.id.setting_general);
         if (ssh != null) {
             TextView summary = ssh.findViewById(R.id.summary);
@@ -279,6 +330,17 @@ public class SettingsFragment extends Fragment {
                 ? getString(R.string.settings_theme_mode_dark)
                 : getString(R.string.settings_theme_mode_light);
             summary.setText(getString(R.string.settings_main_theme_display_summary_format, modeLabel));
+            summary.setVisibility(View.VISIBLE);
+        }
+        if (sessionPolicy != null) {
+            TextView summary = sessionPolicy.findViewById(R.id.summary);
+            com.orcterm.util.SessionPersistenceManager manager = com.orcterm.util.SessionPersistenceManager.getInstance(requireContext());
+            summary.setText(manager.getPolicyDescription(manager.getSessionPolicy()));
+            summary.setVisibility(View.VISIBLE);
+        }
+        if (backup != null) {
+            TextView summary = backup.findViewById(R.id.summary);
+            summary.setText(getString(R.string.settings_main_backup_summary));
             summary.setVisibility(View.VISIBLE);
         }
         if (general != null) {
@@ -330,7 +392,7 @@ public class SettingsFragment extends Fragment {
         android.widget.LinearLayout layout = new android.widget.LinearLayout(requireContext());
         layout.setOrientation(android.widget.LinearLayout.VERTICAL);
         android.widget.TextView hint = new android.widget.TextView(requireContext());
-        hint.setText("密钥存储目录: " + filesDir.getAbsolutePath());
+        hint.setText(getString(R.string.settings_ssh_key_dir, filesDir.getAbsolutePath()));
         hint.setPadding(24, 16, 24, 16);
         layout.addView(hint);
         android.widget.ListView lv = new android.widget.ListView(requireContext());
@@ -339,23 +401,23 @@ public class SettingsFragment extends Fragment {
             java.io.File target = fileList.get(position);
             new AlertDialog.Builder(requireContext())
                 .setTitle(target.getName())
-                .setItems(new String[]{"复制路径", "删除"}, (d, which) -> {
+                .setItems(new String[]{getString(R.string.action_copy_path), getString(R.string.action_delete)}, (d, which) -> {
                     if (which == 0) {
                         ClipboardManager cb = (ClipboardManager) requireContext().getSystemService(Context.CLIPBOARD_SERVICE);
                         cb.setPrimaryClip(ClipData.newPlainText("path", target.getAbsolutePath()));
-                        Toast.makeText(requireContext(), "路径已复制", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(requireContext(), getString(R.string.msg_path_copied, target.getAbsolutePath()), Toast.LENGTH_SHORT).show();
                     } else {
                         new AlertDialog.Builder(requireContext())
-                            .setTitle("删除密钥")
-                            .setMessage("确定删除 " + target.getName() + " 吗？")
-                            .setPositiveButton("删除", (d2, w2) -> {
+                            .setTitle(getString(R.string.action_delete_key))
+                            .setMessage(getString(R.string.settings_ssh_key_delete_confirm, target.getName()))
+                            .setPositiveButton(getString(R.string.action_delete), (d2, w2) -> {
                                 if (target.delete()) {
-                                    Toast.makeText(requireContext(), "已删除", Toast.LENGTH_SHORT).show();
+                                    Toast.makeText(requireContext(), getString(R.string.action_deleted), Toast.LENGTH_SHORT).show();
                                 } else {
-                                    Toast.makeText(requireContext(), "删除失败", Toast.LENGTH_SHORT).show();
+                                    Toast.makeText(requireContext(), getString(R.string.action_delete_failed), Toast.LENGTH_SHORT).show();
                                 }
                             })
-                            .setNegativeButton("取消", null)
+                            .setNegativeButton(getString(R.string.action_cancel), null)
                             .show();
                     }
                 })
@@ -364,25 +426,25 @@ public class SettingsFragment extends Fragment {
         layout.addView(lv);
         
         new AlertDialog.Builder(requireContext())
-            .setTitle("SSH 密钥管理")
+            .setTitle(getString(R.string.settings_ssh_keys_title))
             .setView(layout)
-            .setPositiveButton("生成新密钥", (d, w) -> {
+            .setPositiveButton(getString(R.string.action_generate_key), (d, w) -> {
                 try {
                     com.orcterm.core.ssh.SshNative ssh = new com.orcterm.core.ssh.SshNative();
                     String alias = "key_" + System.currentTimeMillis();
                     java.io.File priv = new java.io.File(filesDir, alias);
                     int ret = ssh.generateKeyPair(priv.getAbsolutePath());
                     if (ret == 0) {
-                        Toast.makeText(requireContext(), "密钥已生成: " + alias, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(requireContext(), getString(R.string.settings_ssh_key_generated, alias), Toast.LENGTH_SHORT).show();
                     } else {
-                        Toast.makeText(requireContext(), "密钥生成失败", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(requireContext(), getString(R.string.settings_ssh_key_generate_failed), Toast.LENGTH_SHORT).show();
                     }
                 } catch (Exception e) {
-                    Toast.makeText(requireContext(), "错误: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(requireContext(), getString(R.string.msg_error, e.getMessage()), Toast.LENGTH_LONG).show();
                 }
             })
-            .setNeutralButton("导入密钥", (d, w) -> keyPickerLauncher.launch("*/*"))
-            .setNegativeButton("关闭", null)
+            .setNeutralButton(getString(R.string.action_import_key), (d, w) -> keyPickerLauncher.launch("*/*"))
+            .setNegativeButton(getString(R.string.action_close), null)
             .show();
     }
     
@@ -396,7 +458,7 @@ public class SettingsFragment extends Fragment {
             if (uri != null) {
                 prefs.edit().putString("app_bg_uri", uri.toString()).apply();
                 applyBackgroundFromUri(uri);
-                Toast.makeText(requireContext(), "背景已设置", Toast.LENGTH_SHORT).show();
+                Toast.makeText(requireContext(), getString(R.string.background_set), Toast.LENGTH_SHORT).show();
             }
         });
     
@@ -424,9 +486,9 @@ public class SettingsFragment extends Fragment {
                     out.write(buffer, 0, len);
                 }
             }
-            Toast.makeText(requireContext(), "已导入: " + name, Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), getString(R.string.settings_ssh_key_imported, name), Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(requireContext(), "导入失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), getString(R.string.settings_ssh_key_import_failed, e.getMessage()), Toast.LENGTH_SHORT).show();
         }
     }
     
@@ -445,7 +507,7 @@ public class SettingsFragment extends Fragment {
                 rootView.setBackground(drawable);
             }
         } catch (Exception e) {
-            Toast.makeText(requireContext(), "背景加载失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), getString(R.string.background_load_failed), Toast.LENGTH_SHORT).show();
         }
     }
     

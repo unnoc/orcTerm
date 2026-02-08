@@ -1,5 +1,7 @@
 package com.orcterm.ui;
 
+import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -7,12 +9,14 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
+import android.view.WindowInsetsController;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.PopupMenu;
@@ -24,6 +28,8 @@ import android.widget.LinearLayout;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.Observer;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -33,11 +39,18 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import com.google.android.material.button.MaterialButton;
 import com.orcterm.R;
 import com.orcterm.core.terminal.TerminalSession;
+import com.orcterm.core.transport.HostKeyVerifier;
+import com.orcterm.util.CommandConstants;
 import com.orcterm.util.PersistentNotificationHelper;
+import com.orcterm.util.SessionLogManager;
+import com.orcterm.util.CommandHistoryManager;
+import com.orcterm.ui.adapter.AutocompleteAdapter;
 import com.orcterm.ui.widget.TerminalInputView;
 import com.orcterm.ui.widget.TerminalKeypadView;
 import com.orcterm.ui.widget.TerminalView;
-import com.orcterm.util.PersistentNotificationHelper;
+import com.orcterm.core.session.SessionInfo;
+import com.orcterm.core.session.SessionManager;
+import com.orcterm.core.terminal.TerminalEmulator;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -48,6 +61,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 /**
  * 终端模拟 Activity
@@ -81,6 +98,20 @@ public class TerminalActivity extends AppCompatActivity {
     private static final String PREF_CUSTOM_FG = "terminal_fg_color";
     private static final String PREF_ENTER_NEWLINE = "terminal_enter_newline";
     private static final String PREF_LOCAL_ECHO = "terminal_local_echo";
+    private static final String PREF_THEME_JSON = "terminal_theme_json";
+    private static final String PREF_FONT_SIZE_PX = "terminal_font_size_px";
+    private static final String PREF_THEME_ID = "terminal_theme_id";
+    private static final String PREF_THEME_CREATED_AT = "terminal_theme_created_at";
+    private static final String PREF_FONT_WEIGHT = "terminal_font_weight";
+    private static final String PREF_SELECTION_COLOR = "terminal_selection_color";
+    private static final String PREF_SEARCH_HIGHLIGHT_COLOR = "terminal_search_highlight_color";
+    private static final String PREF_LAST_HOSTNAME = "terminal_last_hostname";
+    private static final String PREF_LAST_USERNAME = "terminal_last_username";
+    private static final String PREF_LAST_PORT = "terminal_last_port";
+    private static final String PREF_LAST_PASSWORD = "terminal_last_password";
+    private static final String PREF_LAST_AUTH_TYPE = "terminal_last_auth_type";
+    private static final String PREF_LAST_KEY_PATH = "terminal_last_key_path";
+    private static final int MAX_HISTORY = 50;
 
     // 默认配色方案 (标准 16 色)
     private static final int[] SCHEME_DEFAULT = {
@@ -123,26 +154,47 @@ public class TerminalActivity extends AppCompatActivity {
         0xFF928374, 0xFFFB4934, 0xFFB8BB26, 0xFFFABD2F,
         0xFF83A598, 0xFFD3869B, 0xFF8EC07C, 0xFFEBDBB2
     };
+
+    private static final int[] THEME_TERMIUS = {
+        0xFF151A1E, 0xFFF75F5F, 0xFF7FD962, 0xFFF2C94C,
+        0xFF5AA9FF, 0xFFC792EA, 0xFF5ED4F4, 0xFFE6EDF3,
+        0xFF5A6B7A, 0xFFFF7070, 0xFF9BE77C, 0xFFF6D06F,
+        0xFF7BB9FF, 0xFFD6A7F0, 0xFF7FE3F8, 0xFFFFFFFF
+    };
+    private static final int[] THEME_HIGH_CONTRAST = {
+        0xFF000000, 0xFFFF3B30, 0xFF34C759, 0xFFFFCC00,
+        0xFF0A84FF, 0xFFFF2D55, 0xFF64D2FF, 0xFFFFFFFF,
+        0xFF3A3A3C, 0xFFFF453A, 0xFF30D158, 0xFFFFD60A,
+        0xFF5E5CE6, 0xFFFF375F, 0xFF70D7FF, 0xFFFFFFFF
+    };
     
     private int currentFontSize = 36;
-    private int[] currentScheme = SCHEME_DEFAULT;
+    private int[] currentScheme = THEME_TERMIUS;
     private float currentLineHeight = 1.0f;
     private float currentLetterSpacing = 0.0f;
     private int currentFontFamily = 0;
+    private int currentFontWeight = 400;
     private Bitmap terminalBackground;
     private int terminalBackgroundAlpha = 255;
     private boolean keypadVisible = true;
     private Integer customBackgroundColor;
     private Integer customForegroundColor;
+    private int currentSelectionColor = 0x5533B5E5;
+    private int currentSearchHighlightColor = 0x66FFD54F;
     private boolean enterNewline = true;
     private boolean localEcho = false;
+    private boolean immersiveMode = false;
 
     // UI 组件
     private FrameLayout containerHost;
     private RecyclerView containerList;
     private MaterialButton btnAddContainer;
+    private MaterialButton btnToggleKeypad;
     private TerminalInputView inputCommand;
     private TerminalKeypadView keypadView;
+    private LinearLayout keyboardControlBar;
+    private TextView tvKeyboardStatus;
+    private MaterialButton btnShowKeyboardOptions;
 
     // 数据模型
     private final List<TerminalContainer> containers = new ArrayList<>();
@@ -157,6 +209,17 @@ public class TerminalActivity extends AppCompatActivity {
     private android.widget.LinearLayout splitLayout;
     private FrameLayout splitPrimaryHost;
     private FrameLayout splitSecondaryHost;
+    
+    // 会话日志和命令历史管理器
+    private SessionLogManager sessionLogManager;
+    private CommandHistoryManager commandHistoryManager;
+    private boolean sessionLoggingEnabled = true;
+    private boolean commandCompletionEnabled = true;
+    
+    // 命令自动补全 UI
+    private RecyclerView autocompleteRecyclerView;
+    private AutocompleteAdapter autocompleteAdapter;
+    private android.widget.LinearLayout autocompleteContainer;
     private boolean splitMode = false;
     private boolean splitVertical = false;
     private float splitRatio = 0.5f;
@@ -180,10 +243,6 @@ public class TerminalActivity extends AppCompatActivity {
     private String keyPath;
     private String initialCommand;
     private boolean initialCommandSent = false;
-
-    // 键盘修饰键状态
-    private boolean isCtrlPressed = false;
-    private boolean isAltPressed = false;
 
     /**
      * 将 Android 按键映射为 ANSI 转义序列
@@ -349,13 +408,19 @@ public class TerminalActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Only clear sessions if this is a fresh start, not a recreation
+        // if (savedInstanceState == null) {
+        //    SessionManager.getInstance().clearSessions();
+        // }
+        
         setContentView(R.layout.activity_terminal);
 
         // 适配系统窗口插图 (Safe Area)，确保底部虚拟键盘不被系统导航栏遮挡
         View root = findViewById(android.R.id.content);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             int bottom = insets.getSystemWindowInsetBottom();
-            findViewById(R.id.keypad_view).setPadding(0, 0, 0, bottom);
+            findViewById(R.id.input_container).setPadding(0, 0, 0, bottom);
             return insets;
         });
 
@@ -370,23 +435,40 @@ public class TerminalActivity extends AppCompatActivity {
         if (themeIndex == 1) currentScheme = SCHEME_SOLARIZED_DARK;
         else if (themeIndex == 2) currentScheme = SCHEME_SOLARIZED_LIGHT;
         else if (themeIndex == 3) currentScheme = SCHEME_MONOKAI;
+        else if (themeIndex == 4) currentScheme = THEME_TERMIUS;
         int fontIndex = terminalPrefs.getInt("font_size_index", 1);
-        if (fontIndex == 0) currentFontSize = 24;
-        else if (fontIndex == 1) currentFontSize = 36;
-        else if (fontIndex == 2) currentFontSize = 48;
-        else if (fontIndex == 3) currentFontSize = 60;
+        if (terminalPrefs.contains(PREF_FONT_SIZE_PX)) {
+            currentFontSize = terminalPrefs.getInt(PREF_FONT_SIZE_PX, 36);
+        } else {
+            if (fontIndex == 0) currentFontSize = 24;
+            else if (fontIndex == 1) currentFontSize = 36;
+            else if (fontIndex == 2) currentFontSize = 48;
+            else if (fontIndex == 3) currentFontSize = 60;
+        }
         currentLineHeight = terminalPrefs.getFloat(PREF_LINE_HEIGHT, 1.0f);
         currentLetterSpacing = terminalPrefs.getFloat(PREF_LETTER_SPACING, 0.0f);
         currentFontFamily = terminalPrefs.getInt(PREF_FONT_FAMILY, 0);
+        currentFontWeight = terminalPrefs.getInt(PREF_FONT_WEIGHT, 400);
         terminalBackgroundAlpha = terminalPrefs.getInt(PREF_BG_ALPHA, 255);
         enterNewline = terminalPrefs.getBoolean(PREF_ENTER_NEWLINE, true);
-        localEcho = terminalPrefs.getBoolean(PREF_LOCAL_ECHO, false);
+        localEcho = false; // terminalPrefs.getBoolean(PREF_LOCAL_ECHO, false);
+        currentSelectionColor = terminalPrefs.getInt(PREF_SELECTION_COLOR, 0x5533B5E5);
+        currentSearchHighlightColor = terminalPrefs.getInt(PREF_SEARCH_HIGHLIGHT_COLOR, 0x66FFD54F);
         if (terminalPrefs.contains(PREF_CUSTOM_BG)) {
             customBackgroundColor = terminalPrefs.getInt(PREF_CUSTOM_BG, 0xFF000000);
         }
         if (terminalPrefs.contains(PREF_CUSTOM_FG)) {
             customForegroundColor = terminalPrefs.getInt(PREF_CUSTOM_FG, 0xFFFFFFFF);
         }
+        
+        // 初始化会话日志和命令历史管理器
+        sessionLogManager = new SessionLogManager(this);
+        commandHistoryManager = new CommandHistoryManager(this);
+        sessionLoggingEnabled = terminalPrefs.getBoolean("terminal_session_logging_enabled", true);
+        commandCompletionEnabled = terminalPrefs.getBoolean("terminal_command_completion_enabled", true);
+        
+        // 初始化命令自动补全 UI
+        setupAutocompleteView();
         String bgUriStr = terminalPrefs.getString(PREF_BG_URI, null);
         if (bgUriStr != null) {
             try {
@@ -434,7 +516,6 @@ public class TerminalActivity extends AppCompatActivity {
         initDefaultActions();
         loadCustomActions();
 
-        // 获取连接参数
         hostname = getIntent().getStringExtra("hostname");
         username = getIntent().getStringExtra("username");
         port = getIntent().getIntExtra("port", 22);
@@ -445,6 +526,10 @@ public class TerminalActivity extends AppCompatActivity {
         if (initialCommand == null) {
             initialCommand = getIntent().getStringExtra("initialCommand");
         }
+        restoreConnectionParamsIfMissing();
+        persistConnectionParams();
+        applyThemeJsonFromPrefs();
+        handleThemeAction(getIntent());
         if (initialCommand != null && initialCommand.trim().isEmpty()) {
             initialCommand = null;
         }
@@ -466,6 +551,9 @@ public class TerminalActivity extends AppCompatActivity {
 
         // 绑定按钮事件
         btnAddContainer.setOnClickListener(v -> showCreateContainerDialog());
+        
+        // 根据偏好设置初始化键盘高度
+        applyKeyboardHeightSetting();
 
         // 设置输入监听器
         inputCommand.setOnKeyInputListener(new TerminalInputView.OnKeyInputListener() {
@@ -479,6 +567,28 @@ public class TerminalActivity extends AppCompatActivity {
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     if (keyCode == KeyEvent.KEYCODE_ENTER) {
                         dispatchInput("\r");
+                    } else if (keyCode == KeyEvent.KEYCODE_TAB) {
+                        // Tab键用于在终端和键盘间切换焦点
+                        if (event.isShiftPressed()) {
+                            // Shift+Tab: 返回终端视图
+                            if (activeContainer != null && activeContainer.view != null) {
+                                activeContainer.view.requestFocus();
+                            }
+                        } else {
+                            // Tab: 触发自动补全或发送Tab字符
+                            if (autocompleteContainer != null && autocompleteContainer.getVisibility() == View.VISIBLE && 
+                                autocompleteAdapter != null && autocompleteAdapter.getItemCount() > 0) {
+                                // 如果有补全建议，选择第一个
+                                CommandHistoryManager.CommandSuggestion suggestion = autocompleteAdapter.getItem(0);
+                                if (suggestion != null) {
+                                    onAutocompleteSelected(suggestion.command);
+                                }
+                            } else {
+                                // 否则发送Tab字符
+                                dispatchInput("\t");
+                            }
+                        }
+                        return; // 消费此事件
                     } else {
                         String seq = getAnsiSequence(keyCode, event);
                         if (seq != null) {
@@ -491,37 +601,87 @@ public class TerminalActivity extends AppCompatActivity {
 
         // 设置虚拟键盘监听器
         keypadView.setListener((label, value) -> {
+            if ("KBD".equals(value)) {
+                toggleKeypadVisibility();
+                return;
+            }
             if (activeContainer == null) {
                 return;
             }
-            if ("CTRL".equals(value)) {
-                isCtrlPressed = !isCtrlPressed;
-                Toast.makeText(this, "CTRL " + (isCtrlPressed ? "ON" : "OFF"), Toast.LENGTH_SHORT).show();
-            } else if ("ALT".equals(value)) {
-                isAltPressed = !isAltPressed;
-                Toast.makeText(this, "ALT " + (isAltPressed ? "ON" : "OFF"), Toast.LENGTH_SHORT).show();
-            } else {
-                if (isCtrlPressed && value.length() == 1) {
-                    // 处理虚拟 CTRL 组合键
-                    char c = value.charAt(0);
-                    if (c >= 'a' && c <= 'z') {
-                        char ctrlChar = (char) (c - 'a' + 1);
-                        dispatchInput(String.valueOf(ctrlChar));
-                    } else if (c >= 'A' && c <= 'Z') {
-                        char ctrlChar = (char) (c - 'A' + 1);
-                        dispatchInput(String.valueOf(ctrlChar));
-                    } else {
-                        dispatchInput(value);
-                    }
-                    isCtrlPressed = false;
-                } else {
-                    dispatchInput(value);
-                }
-            }
+            dispatchInput(value);
         });
+        keypadView.setLongClickListener((label, value) -> {
+            if (activeContainer == null) {
+                return;
+            }
+            if ("↑".equals(label)) {
+                showCommandHistoryTimeline();
+                return;
+            }
+            if ("←".equals(label)) {
+                dispatchInput("\033[1;5D");
+                return;
+            }
+            if ("→".equals(label)) {
+                dispatchInput("\033[1;5C");
+                return;
+            }
+            if ("↓".equals(label)) {
+                dispatchInput("\033[1;5B");
+                return;
+            }
+            // 长按功能键时可显示快捷功能
+            if (label.startsWith("F") && label.length() > 1 && Character.isDigit(label.charAt(1))) {
+                Toast.makeText(this, "长按功能键: " + label, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            dispatchInput(value);
+        });
+        
+        // 设置键盘选项按钮的点击事件
+        if (btnShowKeyboardOptions != null) {
+            btnShowKeyboardOptions.setOnClickListener(v -> {
+                showKeyboardOptionsDialog();
+            });
+        }
 
         loadState();
+        restoreSessions();
+        syncSessionsFromContainers();
         refreshVisibleContainers();
+        
+        // Handle focus intent if present
+        long focusId = getIntent().getLongExtra("focus_container_id", -1);
+        if (focusId != -1) {
+            for (TerminalContainer c : containers) {
+                if (c.id == focusId) {
+                    setActiveContainer(c);
+                    break;
+                }
+            }
+        } else if (!TextUtils.isEmpty(hostname)) {
+             // 检查是否已存在该主机的会话
+             boolean found = false;
+             for (TerminalContainer c : containers) {
+                 if (c.session != null && 
+                     hostname.equals(c.session.getHost()) && 
+                     port == c.session.getPort() &&
+                     (username == null || username.equals(c.session.getUsername()))) {
+                     setActiveContainer(c);
+                     found = true;
+                     break;
+                 }
+             }
+             
+             if (!found) {
+                 // 如果不存在，创建新容器
+                 long newId = nextContainerId++;
+                 TerminalContainer newContainer = createContainerInternal(hostname, currentGroup, newId);
+                 setActiveContainer(newContainer);
+                 refreshVisibleContainers();
+             }
+        }
+        
         applyDisplayPreferencesToAllViews();
         splitMode = terminalPrefs.getBoolean(PREF_SPLIT_MODE, false);
         splitVertical = terminalPrefs.getBoolean(PREF_SPLIT_VERTICAL, false);
@@ -567,6 +727,13 @@ public class TerminalActivity extends AppCompatActivity {
             } else if (PREF_ENTER_NEWLINE.equals(key) || PREF_LOCAL_ECHO.equals(key)) {
                 enterNewline = prefs.getBoolean(PREF_ENTER_NEWLINE, enterNewline);
                 localEcho = prefs.getBoolean(PREF_LOCAL_ECHO, localEcho);
+            } else if (PREF_FONT_WEIGHT.equals(key) || PREF_SELECTION_COLOR.equals(key) || PREF_SEARCH_HIGHLIGHT_COLOR.equals(key)) {
+                currentFontWeight = prefs.getInt(PREF_FONT_WEIGHT, currentFontWeight);
+                currentSelectionColor = prefs.getInt(PREF_SELECTION_COLOR, currentSelectionColor);
+                currentSearchHighlightColor = prefs.getInt(PREF_SEARCH_HIGHLIGHT_COLOR, currentSearchHighlightColor);
+                applyDisplayPreferencesToAllViews();
+            } else if (PREF_THEME_JSON.equals(key)) {
+                applyThemeJsonFromPrefs();
             }
         };
         terminalPrefs.registerOnSharedPreferenceChangeListener(prefListener);
@@ -601,6 +768,32 @@ public class TerminalActivity extends AppCompatActivity {
             }
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    private void toggleKeypadVisibility() {
+        keypadVisible = !keypadVisible;
+        keypadView.setVisibility(keypadVisible ? View.VISIBLE : View.GONE);
+        keyboardControlBar.setVisibility(keypadVisible ? View.VISIBLE : View.GONE);
+        terminalPrefs.edit().putBoolean(PREF_KEYPAD_VISIBLE, keypadVisible).apply();
+        
+        // 更新键盘状态文本
+        if (tvKeyboardStatus != null) {
+            tvKeyboardStatus.setText(keypadVisible ? "键盘已显示" : "键盘已隐藏");
+        }
+        
+        if (keypadVisible) {
+            inputCommand.requestFocus();
+            InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.showSoftInput(inputCommand, InputMethodManager.SHOW_IMPLICIT);
+            }
+        } else {
+            // 如果隐藏键盘，则隐藏软键盘
+            InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (imm != null && getCurrentFocus() != null) {
+                imm.hideSoftInputFromWindow(getCurrentFocus().getWindowToken(), 0);
+            }
+        }
     }
 
     private void refreshVisibleContainers() {
@@ -647,6 +840,54 @@ public class TerminalActivity extends AppCompatActivity {
         return sb.toString();
     }
 
+    private void restoreConnectionParamsIfMissing() {
+        if (terminalPrefs == null) return;
+        boolean hostMissing = TextUtils.isEmpty(hostname);
+        boolean userMissing = TextUtils.isEmpty(username);
+        if (!hostMissing && !userMissing) return;
+        if (hostMissing) {
+            String savedHost = terminalPrefs.getString(PREF_LAST_HOSTNAME, null);
+            if (!TextUtils.isEmpty(savedHost)) hostname = savedHost;
+        }
+        if (userMissing) {
+            String savedUser = terminalPrefs.getString(PREF_LAST_USERNAME, null);
+            if (!TextUtils.isEmpty(savedUser)) username = savedUser;
+        }
+        if (terminalPrefs.contains(PREF_LAST_PORT)) {
+            port = terminalPrefs.getInt(PREF_LAST_PORT, port);
+        }
+        if (terminalPrefs.contains(PREF_LAST_AUTH_TYPE)) {
+            authType = terminalPrefs.getInt(PREF_LAST_AUTH_TYPE, authType);
+        }
+        if (terminalPrefs.contains(PREF_LAST_PASSWORD)) {
+            password = terminalPrefs.getString(PREF_LAST_PASSWORD, password);
+        }
+        if (terminalPrefs.contains(PREF_LAST_KEY_PATH)) {
+            keyPath = terminalPrefs.getString(PREF_LAST_KEY_PATH, keyPath);
+        }
+    }
+
+    private void persistConnectionParams() {
+        if (terminalPrefs == null) return;
+        if (TextUtils.isEmpty(hostname) || TextUtils.isEmpty(username)) return;
+        SharedPreferences.Editor editor = terminalPrefs.edit();
+        editor.putString(PREF_LAST_HOSTNAME, hostname);
+        editor.putString(PREF_LAST_USERNAME, username);
+        editor.putInt(PREF_LAST_PORT, port);
+        editor.putInt(PREF_LAST_AUTH_TYPE, authType);
+        if (password != null) {
+            editor.putString(PREF_LAST_PASSWORD, password);
+        } else {
+            editor.remove(PREF_LAST_PASSWORD);
+        }
+        if (keyPath != null) {
+            editor.putString(PREF_LAST_KEY_PATH, keyPath);
+        } else {
+            editor.remove(PREF_LAST_KEY_PATH);
+        }
+        editor.apply();
+    }
+
     // --- 对话框辅助方法 ---
 
     private void showCreateContainerDialog() {
@@ -682,15 +923,54 @@ public class TerminalActivity extends AppCompatActivity {
         container.id = id;
         container.name = name;
         container.group = group;
+        container.inputBuffer = new StringBuilder();
+        container.commandHistory = new ArrayList<>();
 
         // 初始化会话
-        TerminalSession session = new TerminalSession();
+        TerminalSession session = SessionManager.getInstance().getTerminalSession(id);
+        boolean isNewSession = (session == null);
+        
+        if (isNewSession) {
+            session = new TerminalSession();
+            session.setHostKeyVerifier(createHostKeyVerifier());
+            session.setEmulator(new TerminalEmulator(80, 24));
+            long sharedHandle = SessionManager.getInstance().getAndRemoveSharedHandle(id);
+            if (sharedHandle != 0) {
+                try {
+                    session.attachExistingSshHandle(sharedHandle, hostname, port, username, password, authType, keyPath);
+                } catch (Exception e) {
+                    session.connect(hostname, port, username, password, authType, keyPath);
+                }
+            } else {
+                session.connect(hostname, port, username, password, authType, keyPath);
+            }
+            SessionManager.getInstance().upsertSession(new SessionInfo(container.id, container.name, hostname, port, username, password, authType, keyPath, false), session);
+        } else if (session.getEmulator() == null) {
+             session.setEmulator(new TerminalEmulator(80, 24));
+        }
+        if (!isNewSession) {
+            SessionManager.getInstance().upsertSession(
+                new SessionInfo(
+                    container.id,
+                    container.name,
+                    session.getHost(),
+                    session.getPort(),
+                    session.getUsername(),
+                    session.getPassword(),
+                    session.getAuthType(),
+                    session.getKeyPath(),
+                    container.connected
+                ),
+                session
+            );
+        }
+        
         session.setListener(new ContainerSessionListener(container));
-        session.connect(hostname, port, username, password, authType, keyPath);
         container.session = session;
 
         // 初始化视图
         TerminalView view = new TerminalView(this);
+        view.attachEmulator(session.getEmulator());
         view.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         view.setFontSize(currentFontSize);
         view.setColorScheme(getEffectiveScheme());
@@ -703,6 +983,72 @@ public class TerminalActivity extends AppCompatActivity {
             view.setBackgroundImage(terminalBackground);
             view.setBackgroundAlpha(terminalBackgroundAlpha);
         }
+        view.setOnTerminalGestureListener(new TerminalView.OnTerminalGestureListener() {
+            @Override
+            public void onDoubleTap() {
+                toggleImmersiveMode();
+            }
+
+            @Override
+            public void onThreeFingerSwipe(int direction) {
+                if (direction > 0) {
+                    switchToNextContainer();
+                } else {
+                    switchToPreviousContainer();
+                }
+            }
+
+            @Override
+            public void onCursorMoveRequest(int column, int row) {
+                if (container == activeContainer) {
+                    moveCursorToCell(column, row);
+                }
+            }
+            
+            @Override
+            public void onTerminalTap(float x, float y) {
+                // 点击终端时请求焦点并显示软键盘
+                inputCommand.requestFocus();
+                InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.showSoftInput(inputCommand, InputMethodManager.SHOW_IMPLICIT);
+                }
+            }
+            
+            @Override
+            public void onTerminalLongPress(float x, float y) {
+                // 长按时显示上下文菜单，提供复制粘贴等功能
+                showTerminalContextMenu(container, x, y);
+            }
+
+            @Override
+            public void onTerminalKeyDown(int keyCode, KeyEvent event) {
+                if (container != activeContainer) {
+                    setActiveContainer(container);
+                }
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (keyCode == KeyEvent.KEYCODE_ENTER) {
+                        dispatchInput("\r");
+                    } else if (keyCode == KeyEvent.KEYCODE_TAB) {
+                        if (event.isShiftPressed()) {
+                            if (activeContainer != null && activeContainer.view != null) {
+                                activeContainer.view.requestFocus();
+                            }
+                        } else {
+                            if (!keypadVisible) {
+                                toggleKeypadVisibility();
+                            }
+                        }
+                        return;
+                    } else {
+                        String seq = getAnsiSequence(keyCode, event);
+                        if (seq != null) {
+                            dispatchInput(seq);
+                        }
+                    }
+                }
+            }
+        });
         
         // 应用光标设置
         applyCursorSettings(view);
@@ -726,8 +1072,200 @@ public class TerminalActivity extends AppCompatActivity {
         return container;
     }
 
+    private void syncSessionsFromContainers() {
+        for (TerminalContainer container : containers) {
+            if (container.session == null) {
+                continue;
+            }
+            TerminalSession session = container.session;
+            SessionManager.getInstance().upsertSession(
+                new SessionInfo(
+                    container.id,
+                    container.name,
+                    session.getHost(),
+                    session.getPort(),
+                    session.getUsername(),
+                    session.getPassword(),
+                    session.getAuthType(),
+                    session.getKeyPath(),
+                    container.connected
+                ),
+                session
+            );
+        }
+    }
+    private void restoreSessions() {
+        List<SessionInfo> sessions = SessionManager.getInstance().getSessions();
+        if (sessions.isEmpty()) return;
+
+        for (SessionInfo info : sessions) {
+             boolean exists = false;
+             for (TerminalContainer c : containers) {
+                 if (c.id == info.id) {
+                     exists = true;
+                     break;
+                 }
+             }
+             if (!exists) {
+                 createContainerInternal(info.name, "Default", info.id);
+                 if (info.id >= nextContainerId) {
+                     nextContainerId = info.id + 1;
+                 }
+             }
+        }
+    }
+    
+    private void showTerminalContextMenu(TerminalContainer container, float x, float y) {
+        PopupMenu popup = new PopupMenu(this, findViewById(android.R.id.content), Gravity.CENTER);
+        popup.getMenu().add("复制").setOnMenuItemClickListener(item -> {
+            copyTerminalSelection(container);
+            return true;
+        });
+        popup.getMenu().add("粘贴").setOnMenuItemClickListener(item -> {
+            pasteFromClipboard();
+            return true;
+        });
+        popup.getMenu().add("全选").setOnMenuItemClickListener(item -> {
+            selectAllTerminalText(container);
+            return true;
+        });
+        popup.show();
+    }
+    
+    private void copyTerminalSelection(TerminalContainer container) {
+        if (container != null && container.view != null) {
+            String content = container.view.getTerminalContent();
+            if (content != null && !content.isEmpty()) {
+                android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                android.content.ClipData clip = android.content.ClipData.newPlainText("Terminal Content", content);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(clip);
+                    Toast.makeText(this, "已复制 " + content.length() + " 个字符", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Toast.makeText(this, "终端内容为空", Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            Toast.makeText(this, "没有活动的终端", Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    private void pasteFromClipboard() {
+        try {
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null && clipboard.hasPrimaryClip()) {
+                android.content.ClipData clipData = clipboard.getPrimaryClip();
+                if (clipData != null && clipData.getItemCount() > 0) {
+                    CharSequence text = clipData.getItemAt(0).getText();
+                    if (text != null) {
+                        inputCommand.pasteText(text.toString());
+                        Toast.makeText(this, "已粘贴 " + text.length() + " 个字符", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            } else {
+                Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, "粘贴失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    private void selectAllTerminalText(TerminalContainer container) {
+        Toast.makeText(this, "全选功能待实现", Toast.LENGTH_SHORT).show();
+    }
+    
+    private void showKeyboardOptionsDialog() {
+        PopupMenu popup = new PopupMenu(this, btnShowKeyboardOptions);
+        popup.getMenu().add("键盘高度").setOnMenuItemClickListener(item -> {
+            showKeyboardHeightDialog();
+            return true;
+        });
+        popup.getMenu().add("键盘布局").setOnMenuItemClickListener(item -> {
+            showKeyboardLayoutDialog();
+            return true;
+        });
+        popup.getMenu().add("重置键盘").setOnMenuItemClickListener(item -> {
+            resetKeyboardLayout();
+            return true;
+        });
+        popup.show();
+    }
+    
+    private void showKeyboardHeightDialog() {
+        // 创建简单的对话框让用户选择键盘高度
+        String[] options = {"紧凑", "标准", "宽松"};
+        int currentHeight = terminalPrefs.getInt("keyboard_height_option", 1); // 默认为标准
+        
+        new AlertDialog.Builder(this)
+            .setTitle("键盘高度")
+            .setSingleChoiceItems(options, currentHeight, (dialog, which) -> {
+                terminalPrefs.edit().putInt("keyboard_height_option", which).apply();
+                dialog.dismiss();
+                Toast.makeText(this, "已更新键盘高度设置", Toast.LENGTH_SHORT).show();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+    
+    private void showKeyboardLayoutDialog() {
+        // 创建键盘布局选择对话框
+        String[] layouts = {"标准", "编程", "服务器管理"};
+        int currentLayout = terminalPrefs.getInt("keyboard_layout_option", 0);
+        
+        new AlertDialog.Builder(this)
+            .setTitle("键盘布局")
+            .setSingleChoiceItems(layouts, currentLayout, (dialog, which) -> {
+                terminalPrefs.edit().putInt("keyboard_layout_option", which).apply();
+                dialog.dismiss();
+                // 这里可以重新加载键盘布局
+                Toast.makeText(this, "已更新键盘布局: " + layouts[which], Toast.LENGTH_SHORT).show();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+    
+    private void resetKeyboardLayout() {
+        // 重置键盘布局到默认状态
+        new AlertDialog.Builder(this)
+            .setTitle("重置键盘")
+            .setMessage("确定要重置键盘布局到默认状态吗？")
+            .setPositiveButton("确定", (dialog, which) -> {
+                // 这里可以重置键盘的自定义设置
+                Toast.makeText(this, "键盘布局已重置", Toast.LENGTH_SHORT).show();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+    
+    private void applyKeyboardHeightSetting() {
+        // 获取键盘高度设置
+        int heightOption = terminalPrefs.getInt("keyboard_height_option", 1); // 默认为标准
+        
+        // 获取当前键盘参数
+        ViewGroup.LayoutParams params = keypadView.getLayoutParams();
+        
+        // 根据设置调整键盘高度
+        switch (heightOption) {
+            case 0: // 紧凑
+                params.height = (int) (getResources().getDisplayMetrics().density * 100); // 100dp
+                break;
+            case 1: // 标准
+                params.height = (int) (getResources().getDisplayMetrics().density * 140); // 140dp
+                break;
+            case 2: // 宽松
+                params.height = (int) (getResources().getDisplayMetrics().density * 180); // 180dp
+                break;
+            default:
+                params.height = (int) (getResources().getDisplayMetrics().density * 140); // 默认标准
+                break;
+        }
+        
+        keypadView.setLayoutParams(params);
+    }
+
     private void closeContainer(TerminalContainer container) {
         containers.remove(container);
+        SessionManager.getInstance().removeSession(container.id);
         visibleContainers.remove(container);
         containerHost.removeView(container.view);
         if (container.session != null) {
@@ -803,11 +1341,123 @@ public class TerminalActivity extends AppCompatActivity {
         TerminalContainer container = activeContainer;
         if (container == null) return;
         String send = normalizeLineEnding(text);
+        recordInputHistory(container, send);
         if (localEcho && container.view != null) {
             container.view.append(send);
         }
         if (container.session != null) {
             container.session.write(send);
+        }
+    }
+
+    private void recordInputHistory(TerminalContainer container, String text) {
+        if (container == null || text == null || text.isEmpty()) return;
+        if (text.indexOf('\u001b') >= 0) {
+            return;
+        }
+        StringBuilder buffer = container.inputBuffer;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\r' || c == '\n') {
+                String cmd = buffer.toString().trim();
+                if (!cmd.isEmpty()) {
+                    addCommandHistory(container, cmd);
+                }
+                buffer.setLength(0);
+            } else if (c == 0x7f) {
+                int len = buffer.length();
+                if (len > 0) {
+                    buffer.deleteCharAt(len - 1);
+                }
+            } else if (c >= 0x20) {
+                buffer.append(c);
+            }
+        }
+    }
+
+    private void addCommandHistory(TerminalContainer container, String command) {
+        if (container.commandHistory.size() >= MAX_HISTORY) {
+            container.commandHistory.remove(0);
+        }
+        container.commandHistory.add(new CommandEntry(command, System.currentTimeMillis()));
+    }
+
+    private void showCommandHistoryTimeline() {
+        TerminalContainer container = activeContainer;
+        if (container == null) return;
+        if (container.commandHistory.isEmpty()) {
+            Toast.makeText(this, "暂无命令历史", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        SimpleDateFormat format = new SimpleDateFormat("HH:mm:ss");
+        List<CommandEntry> entries = container.commandHistory;
+        List<CommandEntry> displayEntries = new ArrayList<>();
+        List<String> display = new ArrayList<>();
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            CommandEntry entry = entries.get(i);
+            displayEntries.add(entry);
+            display.add(format.format(new Date(entry.timestamp)) + "  " + entry.command);
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("命令历史")
+            .setItems(display.toArray(new String[0]), (dialog, which) -> {
+                CommandEntry entry = displayEntries.get(which);
+                if (entry != null) {
+                    dispatchInput(entry.command + "\r");
+                }
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+
+    private void moveCursorToCell(int column, int row) {
+        TerminalContainer container = activeContainer;
+        if (container == null || container.view == null) return;
+        TerminalView view = container.view;
+        if (view.getEmulator() == null) return;
+        int currentCol = view.getEmulator().getCursorX();
+        int currentRow = view.getEmulator().getCursorY();
+        int dx = column - currentCol;
+        int dy = row - currentRow;
+        sendCursorRelative(dx, dy);
+    }
+
+    private void sendCursorRelative(int dx, int dy) {
+        if (dx > 0) {
+            dispatchInput("\033[" + dx + "C");
+        } else if (dx < 0) {
+            dispatchInput("\033[" + (-dx) + "D");
+        }
+        if (dy > 0) {
+            dispatchInput("\033[" + dy + "B");
+        } else if (dy < 0) {
+            dispatchInput("\033[" + (-dy) + "A");
+        }
+    }
+
+    private void toggleImmersiveMode() {
+        immersiveMode = !immersiveMode;
+        View decor = getWindow().getDecorView();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = decor.getWindowInsetsController();
+            if (controller != null) {
+                if (immersiveMode) {
+                    controller.hide(android.view.WindowInsets.Type.statusBars() | android.view.WindowInsets.Type.navigationBars());
+                    controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                } else {
+                    controller.show(android.view.WindowInsets.Type.statusBars() | android.view.WindowInsets.Type.navigationBars());
+                }
+            }
+        } else {
+            int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+            if (immersiveMode) {
+                flags |= View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+            }
+            decor.setSystemUiVisibility(flags);
         }
     }
 
@@ -905,11 +1555,105 @@ public class TerminalActivity extends AppCompatActivity {
     }
 
     @Override
+    public void onBackPressed() {
+        if (!containers.isEmpty()) {
+            new AlertDialog.Builder(this)
+                .setTitle("Exit Session?")
+                .setMessage("Do you want to disconnect all sessions or keep them running in background?")
+                .setPositiveButton("Disconnect", (dialog, which) -> super.onBackPressed())
+                .setNegativeButton("Background", (dialog, which) -> {
+                    // Just finish the activity to return to previous screen (e.g. HostDetail),
+                    // but keep sessions alive (handled in onDestroy)
+                    finish();
+                })
+                .setNeutralButton("Cancel", null)
+                .show();
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        
+        long focusId = intent.getLongExtra("focus_container_id", -1);
+        if (focusId != -1) {
+            for (TerminalContainer c : containers) {
+                if (c.id == focusId) {
+                    setActiveContainer(c);
+                    return;
+                }
+            }
+            SessionInfo info = null;
+            for (SessionInfo s : SessionManager.getInstance().getSessions()) {
+                if (s.id == focusId) {
+                    info = s;
+                    break;
+                }
+            }
+            if (info != null) {
+                hostname = info.hostname;
+                port = info.port;
+                username = info.username;
+                password = info.password;
+                authType = info.authType;
+                keyPath = info.keyPath;
+                TerminalContainer newContainer = createContainerInternal(info.name, currentGroup, info.id);
+                setActiveContainer(newContainer);
+                refreshVisibleContainers();
+                return;
+            }
+        }
+        
+        String newHostname = intent.getStringExtra("hostname");
+        if (!TextUtils.isEmpty(newHostname)) {
+            // Check if session exists
+            boolean found = false;
+            int newPort = intent.getIntExtra("port", 22);
+            String newUsername = intent.getStringExtra("username");
+            
+            for (TerminalContainer c : containers) {
+                 if (c.session != null && 
+                     newHostname.equals(c.session.getHost()) && 
+                     newPort == c.session.getPort() &&
+                     (newUsername == null || newUsername.equals(c.session.getUsername()))) {
+                     setActiveContainer(c);
+                     found = true;
+                     break;
+                 }
+            }
+            
+            if (!found) {
+                 // Update connection params
+                 hostname = newHostname;
+                 port = newPort;
+                 username = newUsername;
+                 password = intent.getStringExtra("password");
+                 authType = intent.getIntExtra("auth_type", 0);
+                 keyPath = intent.getStringExtra("key_path");
+                 
+                 // Create new container
+                 long newId = nextContainerId++;
+                 TerminalContainer newContainer = createContainerInternal(hostname, currentGroup, newId);
+                 setActiveContainer(newContainer);
+                 refreshVisibleContainers();
+            }
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
-        for (TerminalContainer container : containers) {
-            if (container.session != null) {
-                container.session.disconnect();
+        if (isFinishing()) {
+            // Do NOT clear sessions here to allow background persistence
+            // SessionManager.getInstance().clearSessions();
+            for (TerminalContainer container : containers) {
+                // Detach listeners but keep session alive
+                if (container.session != null) {
+                    container.session.setListener(null);
+                }
             }
         }
         if (prefListener != null) {
@@ -921,19 +1665,23 @@ public class TerminalActivity extends AppCompatActivity {
 
     @Override
     public boolean onCreateOptionsMenu(android.view.Menu menu) {
-        menu.add(0, 1001, 0, "字体: 小");
-        menu.add(0, 1002, 0, "字体: 中");
-        menu.add(0, 1003, 0, "字体: 大");
-        menu.add(0, 1004, 0, "字体: 特大");
-        menu.add(0, 1005, 0, "字体: 等宽");
-        menu.add(0, 1006, 0, "字体: 系统");
-        menu.add(0, 2001, 0, "配色: 默认");
-        menu.add(0, 2002, 0, "配色: Solarized Dark");
-        menu.add(0, 2003, 0, "配色: Solarized Light");
-        menu.add(0, 2004, 0, "配色: Monokai");
-        menu.add(0, 2005, 0, "配色: Dracula");
-        menu.add(0, 2006, 0, "配色: Nord");
-        menu.add(0, 2007, 0, "配色: Gruvbox");
+        android.view.SubMenu fontMenu = menu.addSubMenu("快速字体");
+        fontMenu.add(0, 1201, 0, "字体: 小");
+        fontMenu.add(0, 1202, 0, "字体: 中");
+        fontMenu.add(0, 1203, 0, "字体: 大");
+        fontMenu.add(0, 1204, 0, "字体: 特大");
+        fontMenu.add(0, 1205, 0, "字体: 等宽");
+        fontMenu.add(0, 1206, 0, "字体: 系统");
+        android.view.SubMenu themeMenu = menu.addSubMenu("快速配色");
+        themeMenu.add(0, 2201, 0, "配色: 默认");
+        themeMenu.add(0, 2202, 0, "配色: Solarized Dark");
+        themeMenu.add(0, 2203, 0, "配色: Solarized Light");
+        themeMenu.add(0, 2204, 0, "配色: Monokai");
+        themeMenu.add(0, 2205, 0, "配色: Dracula");
+        themeMenu.add(0, 2206, 0, "配色: Nord");
+        themeMenu.add(0, 2207, 0, "配色: Gruvbox");
+        themeMenu.add(0, 2208, 0, "配色: Termius");
+        menu.add(0, 1100, 0, "终端设置...");
         menu.add(0, 2010, 0, "主题编辑器...");
         menu.add(0, 2011, 0, "导入主题...");
         menu.add(0, 2012, 0, "导出主题...");
@@ -971,34 +1719,38 @@ public class TerminalActivity extends AppCompatActivity {
         int id = item.getItemId();
         
         switch (id) {
-            case 1001: applyFontSize(24); break;
-            case 1002: applyFontSize(36); break;
-            case 1003: applyFontSize(48); break;
-            case 1004: applyFontSize(60); break;
-            case 1005:
+            case 1100:
+                Intent settingsIntent = new Intent(this, SettingsDetailActivity.class);
+                settingsIntent.putExtra("page", "terminal");
+                startActivity(settingsIntent);
+                break;
+            case 1201: applyFontSize(24); break;
+            case 1202: applyFontSize(36); break;
+            case 1203: applyFontSize(48); break;
+            case 1204: applyFontSize(60); break;
+            case 1205:
                 currentFontFamily = 0;
                 terminalPrefs.edit().putInt(PREF_FONT_FAMILY, currentFontFamily).apply();
                 applyDisplayPreferencesToAllViews();
                 break;
-            case 1006:
+            case 1206:
                 currentFontFamily = 1;
                 terminalPrefs.edit().putInt(PREF_FONT_FAMILY, currentFontFamily).apply();
                 applyDisplayPreferencesToAllViews();
                 break;
-            case 2001: applyColorScheme(SCHEME_DEFAULT); break;
-            case 2002: applyColorScheme(SCHEME_SOLARIZED_DARK); break;
-            case 2003: applyColorScheme(SCHEME_SOLARIZED_LIGHT); break;
-            case 2004: applyColorScheme(SCHEME_MONOKAI); break;
-            case 2005: applyColorScheme(THEME_DRACULA); break;
-            case 2006: applyColorScheme(THEME_NORD); break;
-            case 2007: applyColorScheme(THEME_GRUVBOX); break;
-            case 2010: showColorSchemeEditor(); break;
+            case 2201: applyColorScheme(SCHEME_DEFAULT); break;
+            case 2202: applyColorScheme(SCHEME_SOLARIZED_DARK); break;
+            case 2203: applyColorScheme(SCHEME_SOLARIZED_LIGHT); break;
+            case 2204: applyColorScheme(SCHEME_MONOKAI); break;
+            case 2205: applyColorScheme(THEME_DRACULA); break;
+            case 2206: applyColorScheme(THEME_NORD); break;
+            case 2207: applyColorScheme(THEME_GRUVBOX); break;
+            case 2208: applyColorScheme(THEME_TERMIUS); break;
+            case 2010: showThemeConfigDialog(); break;
             case 2011: showImportThemeDialog(); break;
             case 2012: showExportThemeDialog(); break;
             case 3002:
-                keypadVisible = !keypadVisible;
-                keypadView.setVisibility(keypadVisible ? View.VISIBLE : View.GONE);
-                terminalPrefs.edit().putBoolean(PREF_KEYPAD_VISIBLE, keypadVisible).apply();
+                toggleKeypadVisibility();
                 break;
             case 5001:
                 showCommandPanel();
@@ -1146,7 +1898,10 @@ public class TerminalActivity extends AppCompatActivity {
                 container.view.setFontSize(size);
             }
         }
-        terminalPrefs.edit().putInt("font_size_index", size == 24 ? 0 : size == 36 ? 1 : size == 48 ? 2 : 3).apply();
+        terminalPrefs.edit()
+            .putInt("font_size_index", size == 24 ? 0 : size == 36 ? 1 : size == 48 ? 2 : 3)
+            .putInt(PREF_FONT_SIZE_PX, size)
+            .apply();
     }
 
     private int[] getEffectiveScheme() {
@@ -1208,6 +1963,7 @@ public class TerminalActivity extends AppCompatActivity {
         if (scheme == SCHEME_SOLARIZED_DARK) idx = 1;
         else if (scheme == SCHEME_SOLARIZED_LIGHT) idx = 2;
         else if (scheme == SCHEME_MONOKAI) idx = 3;
+        else if (scheme == THEME_TERMIUS) idx = 4;
         terminalPrefs.edit().putInt("terminal_theme_index", idx).apply();
     }
 
@@ -1239,6 +1995,18 @@ public class TerminalActivity extends AppCompatActivity {
         boolean connected;
         TerminalSession session;
         TerminalView view;
+        StringBuilder inputBuffer;
+        List<CommandEntry> commandHistory;
+    }
+
+    private static class CommandEntry {
+        private final String command;
+        private final long timestamp;
+
+        private CommandEntry(String command, long timestamp) {
+            this.command = command;
+            this.timestamp = timestamp;
+        }
     }
 
     private class ContainerSessionListener implements TerminalSession.SessionListener {
@@ -1248,43 +2016,65 @@ public class TerminalActivity extends AppCompatActivity {
             this.container = container;
         }
 
-        @Override
-        public void onConnected() {
+    @Override
+    public void onConnected() {
             runOnUiThread(() -> {
                 container.connected = true;
+                SessionManager.getInstance().updateSession(container.id, true);
                 container.view.append("Connected.\r\n");
-                containerAdapter.notifyDataSetChanged();
-                updatePersistentNotification();
-                if (container == activeContainer) {
-                    maybeRunInitialCommand(container);
-                }
-            });
-        }
+            containerAdapter.notifyDataSetChanged();
+            updatePersistentNotification();
+            
+            // 开始会话日志记录
+            if (sessionLoggingEnabled && container.session != null) {
+                startSessionLogging(container.session.getHost(), 
+                    container.session.getPort(), container.session.getUsername());
+            }
+            
+            if (container == activeContainer) {
+                maybeRunInitialCommand(container);
+            }
+        });
+    }
 
-        @Override
-        public void onDisconnected() {
+    @Override
+    public void onDisconnected() {
             runOnUiThread(() -> {
                 container.connected = false;
+                SessionManager.getInstance().updateSession(container.id, false);
                 container.view.append("Disconnected.\r\n");
-                containerAdapter.notifyDataSetChanged();
-                updatePersistentNotification();
-            });
-        }
+            containerAdapter.notifyDataSetChanged();
+            updatePersistentNotification();
+            
+            // 停止会话日志记录
+            if (sessionLoggingEnabled) {
+                stopSessionLogging();
+            }
+        });
+    }
 
-        @Override
-        public void onDataReceived(String data) {
-            runOnUiThread(() -> container.view.append(data));
-        }
-
-        @Override
-        public void onError(String message) {
-            runOnUiThread(() -> {
-                container.connected = false;
-                container.view.append("Error: " + message + "\r\n");
-                containerAdapter.notifyDataSetChanged();
-            });
+    @Override
+    public void onDataReceived(String data) {
+        // Data is already written to emulator by TerminalSession
+        // Just notify view to redraw
+        runOnUiThread(() -> container.view.notifyScreenUpdate());
+        
+        // 记录会话输出到日志
+        if (sessionLoggingEnabled) {
+            logSessionOutput(data);
         }
     }
+
+    @Override
+    public void onError(String message) {
+        runOnUiThread(() -> {
+            container.connected = false;
+            SessionManager.getInstance().updateSession(container.id, false);
+            container.view.append("Error: " + message + "\r\n");
+            containerAdapter.notifyDataSetChanged();
+        });
+    }
+}
 
     private class ContainerAdapter extends RecyclerView.Adapter<ContainerAdapter.ContainerViewHolder> {
 
@@ -1467,6 +2257,7 @@ public class TerminalActivity extends AppCompatActivity {
             container.view.append("Reconnecting...\r\n");
             TerminalSession session = new TerminalSession();
             session.setListener(new ContainerSessionListener(container));
+            session.setHostKeyVerifier(createHostKeyVerifier());
             session.connect(hostname, port, username, password, authType, keyPath);
             container.session = session;
             containerAdapter.notifyDataSetChanged();
@@ -1761,10 +2552,13 @@ public class TerminalActivity extends AppCompatActivity {
 
     private void initDefaultActions() {
         defaultActions.clear();
-        defaultActions.add(new TerminalAction("清屏", "clear", false));
-        defaultActions.add(new TerminalAction("列出目录", "ls -la", false));
-        defaultActions.add(new TerminalAction("当前路径", "pwd", false));
-        defaultActions.add(new TerminalAction("当前用户", "whoami", false));
+        defaultActions.add(new TerminalAction("清屏", CommandConstants.CMD_CLEAR, false));
+        defaultActions.add(new TerminalAction("列出目录", CommandConstants.CMD_LS_LA, false));
+        defaultActions.add(new TerminalAction("当前路径", CommandConstants.CMD_PWD, false));
+        defaultActions.add(new TerminalAction("当前用户", CommandConstants.CMD_WHOAMI, false));
+        defaultActions.add(new TerminalAction("Docker状态", CommandConstants.CMD_DOCKER_PS, false));
+        defaultActions.add(new TerminalAction("内存使用", CommandConstants.CMD_FREE_M, false));
+        defaultActions.add(new TerminalAction("磁盘使用", CommandConstants.CMD_DF_H, false));
     }
 
     private void loadCustomActions() {
@@ -1797,6 +2591,51 @@ public class TerminalActivity extends AppCompatActivity {
         terminalPrefs.edit().putString(PREF_CUSTOM_ACTIONS, array.toString()).apply();
     }
 
+    private List<TerminalAction> buildContextActions(TerminalContainer container) {
+        List<TerminalAction> actions = new ArrayList<>();
+        String context = getLastCommandContext(container);
+        if (context == null || context.isEmpty()) {
+            return actions;
+        }
+        String lower = context.toLowerCase();
+        if (lower.contains("git")) {
+            actions.add(new TerminalAction("Git: 状态", CommandConstants.CMD_GIT_STATUS, false));
+            actions.add(new TerminalAction("Git: 差异", CommandConstants.CMD_GIT_DIFF, false));
+            actions.add(new TerminalAction("Git: 日志", CommandConstants.CMD_GIT_LOG_ONELINE_10, false));
+            actions.add(new TerminalAction("Git: 分支", CommandConstants.CMD_GIT_BRANCH_VV, false));
+        }
+        if (lower.contains("docker") || lower.contains("compose")) {
+            actions.add(new TerminalAction("Docker: 运行中容器", CommandConstants.CMD_DOCKER_PS, false));
+            actions.add(new TerminalAction("Docker: 所有容器", CommandConstants.CMD_DOCKER_PS_ALL, false));
+            actions.add(new TerminalAction("Docker: 镜像列表", CommandConstants.CMD_DOCKER_IMAGES, false));
+            actions.add(new TerminalAction("Docker: 资源统计", CommandConstants.CMD_DOCKER_STATS, false));
+        }
+        if (lower.contains("kubectl") || lower.contains("k8s") || lower.contains("helm")) {
+            actions.add(new TerminalAction("K8s: Pod 列表", CommandConstants.CMD_KUBECTL_GET_PODS_ALL, false));
+            actions.add(new TerminalAction("K8s: Service 列表", CommandConstants.CMD_KUBECTL_GET_SVC_ALL, false));
+            actions.add(new TerminalAction("K8s: 节点列表", CommandConstants.CMD_KUBECTL_GET_NODES, false));
+        }
+        if (lower.contains("tmux")) {
+            actions.add(new TerminalAction("Tmux: 会话列表", CommandConstants.CMD_TMUX_LS, false));
+            actions.add(new TerminalAction("Tmux: 附加会话", CommandConstants.CMD_TMUX_ATTACH_PREFIX, false));
+        }
+        return actions;
+    }
+
+    private String getLastCommandContext(TerminalContainer container) {
+        if (container == null) return null;
+        if (container.commandHistory != null && !container.commandHistory.isEmpty()) {
+            CommandEntry entry = container.commandHistory.get(container.commandHistory.size() - 1);
+            if (entry != null && entry.command != null) {
+                return entry.command.trim();
+            }
+        }
+        if (container.inputBuffer != null && container.inputBuffer.length() > 0) {
+            return container.inputBuffer.toString().trim();
+        }
+        return null;
+    }
+
     private void showCommandPanel() {
         TerminalSession session = getActiveSession();
         if (session == null) {
@@ -1805,6 +2644,7 @@ public class TerminalActivity extends AppCompatActivity {
         }
         List<TerminalAction> actions = new ArrayList<>();
         actions.addAll(defaultActions);
+        actions.addAll(buildContextActions(activeContainer));
         actions.addAll(customActions);
         if (actions.isEmpty()) {
             Toast.makeText(this, "没有可用命令", Toast.LENGTH_SHORT).show();
@@ -1898,12 +2738,186 @@ public class TerminalActivity extends AppCompatActivity {
 
     private void sendCommand(String command) {
         if (command == null) return;
+        
+        // 记录命令到历史
+        if (commandHistoryManager != null) {
+            commandHistoryManager.recordCommand(command);
+        }
+        
         String eol = enterNewline ? "\n" : "\r";
         String cmd = command;
         if (!cmd.endsWith("\n") && !cmd.endsWith("\r")) {
             cmd += eol;
         }
         dispatchInput(cmd);
+        
+        // 隐藏自动补全
+        hideAutocomplete();
+    }
+
+    // ==================== 命令自动补全功能 ====================
+    
+    private void onAutocompleteSelected(String command) {
+        inputCommand.setText(command);
+        inputCommand.setSelection(command.length());
+        hideAutocomplete();
+    }
+
+    private void setupAutocompleteView() {
+        // 创建自动补全容器
+        autocompleteContainer = new android.widget.LinearLayout(this);
+        autocompleteContainer.setOrientation(android.widget.LinearLayout.VERTICAL);
+        autocompleteContainer.setBackgroundColor(Color.WHITE);
+        autocompleteContainer.setElevation(8);
+        autocompleteContainer.setVisibility(View.GONE);
+        
+        // 添加到布局（在输入框上方）
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = Gravity.BOTTOM;
+        params.bottomMargin = 200; // 留出键盘空间
+        
+        containerHost.addView(autocompleteContainer, params);
+        
+        // 创建 RecyclerView
+        autocompleteRecyclerView = new RecyclerView(this);
+        autocompleteRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        autocompleteAdapter = new com.orcterm.ui.adapter.AutocompleteAdapter();
+        autocompleteAdapter.setOnSuggestionClickListener(suggestion -> {
+            // 点击建议时，填充到输入框
+            onAutocompleteSelected(suggestion.command);
+        });
+        autocompleteRecyclerView.setAdapter(autocompleteAdapter);
+        
+        autocompleteContainer.addView(autocompleteRecyclerView);
+        
+        // 设置最大高度
+        autocompleteRecyclerView.setLayoutParams(new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            400 // 最大高度 400dp
+        ));
+    }
+    
+    private void showAutocompleteSuggestions(String prefix) {
+        if (!commandCompletionEnabled || commandHistoryManager == null || prefix == null || prefix.isEmpty()) {
+            hideAutocomplete();
+            return;
+        }
+        
+        List<CommandHistoryManager.CommandSuggestion> suggestions = 
+            commandHistoryManager.getSuggestions(prefix);
+        
+        if (suggestions.isEmpty()) {
+            hideAutocomplete();
+            return;
+        }
+        
+        autocompleteAdapter.setSuggestions(suggestions);
+        autocompleteContainer.setVisibility(View.VISIBLE);
+    }
+    
+    private void hideAutocomplete() {
+        if (autocompleteContainer != null) {
+            autocompleteContainer.setVisibility(View.GONE);
+        }
+    }
+    
+    // ==================== 会话日志功能 ====================
+    
+    private void startSessionLogging(String hostname, int port, String username) {
+        if (sessionLoggingEnabled && sessionLogManager != null) {
+            sessionLogManager.startSession(hostname, port, username);
+        }
+    }
+    
+    private void stopSessionLogging() {
+        if (sessionLogManager != null) {
+            sessionLogManager.endSession();
+        }
+    }
+    
+    private void logSessionOutput(String data) {
+        if (sessionLoggingEnabled && sessionLogManager != null) {
+            sessionLogManager.writeLog(data);
+        }
+    }
+    
+    private void showSessionLogsDialog() {
+        if (sessionLogManager == null) return;
+        
+        sessionLogManager.getAllLogs(logs -> {
+            runOnUiThread(() -> {
+                if (logs.isEmpty()) {
+                    Toast.makeText(TerminalActivity.this, "暂无会话日志", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                
+                // 创建日志列表对话框
+                String[] items = new String[logs.size()];
+                for (int i = 0; i < logs.size(); i++) {
+                    SessionLogManager.SessionLog log = logs.get(i);
+                    SimpleDateFormat sdf = new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault());
+                    items[i] = log.hostInfo + "\n" + sdf.format(new Date(log.startTime)) + 
+                        " (" + (log.size / 1024) + " KB, " + log.lineCount + " 行)";
+                }
+                
+                new AlertDialog.Builder(this)
+                    .setTitle("会话日志")
+                    .setItems(items, (dialog, which) -> {
+                        // 查看选中的日志
+                        showLogContentDialog(logs.get(which));
+                    })
+                    .setNegativeButton("关闭", null)
+                    .setNeutralButton("清理全部", (dialog, which) -> {
+                        new AlertDialog.Builder(this)
+                            .setTitle("确认清理")
+                            .setMessage("确定要删除所有会话日志吗？")
+                            .setPositiveButton("删除", (d, w) -> {
+                                sessionLogManager.clearAllLogs(deletedCount -> {
+                                    runOnUiThread(() -> Toast.makeText(TerminalActivity.this, 
+                                        "已清理 " + deletedCount + " 个日志文件", Toast.LENGTH_SHORT).show());
+                                });
+                            })
+                            .setNegativeButton("取消", null)
+                            .show();
+                    })
+                    .show();
+            });
+        });
+    }
+    
+    private void showLogContentDialog(SessionLogManager.SessionLog log) {
+        sessionLogManager.readLogContent(log.logFilePath, 1000, lines -> {
+            runOnUiThread(() -> {
+                StringBuilder content = new StringBuilder();
+                for (String line : lines) {
+                    content.append(line).append("\n");
+                }
+                
+                // 创建可滚动的文本视图
+                android.widget.ScrollView scrollView = new android.widget.ScrollView(TerminalActivity.this);
+                TextView textView = new TextView(TerminalActivity.this);
+                textView.setText(content.toString());
+                textView.setTextSize(12);
+                textView.setPadding(16, 16, 16, 16);
+                textView.setTypeface(Typeface.MONOSPACE);
+                scrollView.addView(textView);
+                
+                new AlertDialog.Builder(TerminalActivity.this)
+                    .setTitle(log.hostInfo)
+                    .setView(scrollView)
+                    .setPositiveButton("关闭", null)
+                    .setNegativeButton("删除", (d, w) -> {
+                        sessionLogManager.deleteLog(log.logFilePath, () -> {
+                            runOnUiThread(() -> Toast.makeText(TerminalActivity.this, 
+                                "日志已删除", Toast.LENGTH_SHORT).show());
+                        });
+                    })
+                    .show();
+            });
+        });
     }
 
     private void applyDisplayPreferencesToAllViews() {
@@ -1913,8 +2927,11 @@ public class TerminalActivity extends AppCompatActivity {
             v.setColorScheme(getEffectiveScheme());
             v.setLineHeightMultiplier(currentLineHeight);
             v.setLetterSpacing(currentLetterSpacing);
-            Typeface tf = currentFontFamily == 0 ? Typeface.MONOSPACE : Typeface.SANS_SERIF;
+            Typeface base = currentFontFamily == 0 ? Typeface.MONOSPACE : Typeface.SANS_SERIF;
+            Typeface tf = Typeface.create(base, currentFontWeight >= 600 ? Typeface.BOLD : Typeface.NORMAL);
             v.setTypeface(tf);
+            v.setSelectionColor(currentSelectionColor);
+            v.setSearchHighlightColor(currentSearchHighlightColor);
             if (terminalBackground != null) {
                 v.setBackgroundImage(terminalBackground);
                 v.setBackgroundAlpha(terminalBackgroundAlpha);
@@ -2167,6 +3184,119 @@ public class TerminalActivity extends AppCompatActivity {
                .show();
     }
 
+    private void showThemeConfigDialog() {
+        Intent intent = new Intent(this, ThemeEditorActivity.class);
+        intent.putExtra("hostname", hostname);
+        intent.putExtra("username", username);
+        intent.putExtra("port", port);
+        intent.putExtra("password", password);
+        intent.putExtra("auth_type", authType);
+        intent.putExtra("key_path", keyPath);
+        startActivity(intent);
+    }
+
+    private void applyThemeConfig(ThemeRepository.ThemeConfig config) {
+        if (config.ansiColors != null && config.ansiColors.length >= 16) {
+            currentScheme = config.ansiColors;
+        }
+        customBackgroundColor = config.backgroundColor;
+        customForegroundColor = config.foregroundColor;
+        currentSelectionColor = config.selectionColor;
+        currentSearchHighlightColor = config.searchHighlightColor;
+        currentLineHeight = config.lineHeight;
+        currentLetterSpacing = config.letterSpacing;
+        currentFontFamily = config.fontFamily;
+        currentFontWeight = config.fontWeight;
+        terminalBackgroundAlpha = config.backgroundAlpha;
+        float density = getResources().getDisplayMetrics().scaledDensity;
+        int sizePx = Math.max(8, Math.round(config.fontSizeSp * density));
+        currentFontSize = sizePx;
+        applyDisplayPreferencesToAllViews();
+    }
+
+    private void updatePreview(TerminalView preview, ThemeRepository.ThemeConfig config) {
+        if (preview == null || config == null) return;
+        int[] scheme = buildEffectiveScheme(config);
+        preview.setColorScheme(scheme);
+        int sizePx = Math.max(8, Math.round(config.fontSizeSp * getResources().getDisplayMetrics().scaledDensity));
+        preview.setFontSize(sizePx);
+        preview.setLineHeightMultiplier(config.lineHeight);
+        preview.setLetterSpacing(config.letterSpacing);
+        Typeface base = config.fontFamily == 0 ? Typeface.MONOSPACE : Typeface.SANS_SERIF;
+        Typeface tf = Typeface.create(base, config.fontWeight >= 600 ? Typeface.BOLD : Typeface.NORMAL);
+        preview.setTypeface(tf);
+        preview.setSelectionColor(config.selectionColor);
+        preview.setSearchHighlightColor(config.searchHighlightColor);
+        TerminalView.CursorStyle[] styles = TerminalView.CursorStyle.values();
+        if (config.cursorStyle >= 0 && config.cursorStyle < styles.length) {
+            preview.setCursorStyle(styles[config.cursorStyle]);
+        }
+        preview.setCursorBlink(config.cursorBlink);
+        preview.setCursorColor(config.cursorColor);
+        int lineNumber = config.ansiColors != null && config.ansiColors.length > 8 ? config.ansiColors[8] : 0xFF888888;
+        int bracketMatch = config.ansiColors != null && config.ansiColors.length > 3 ? config.ansiColors[3] : 0x66FFD54F;
+        int highRisk = config.ansiColors != null && config.ansiColors.length > 1 ? config.ansiColors[1] : 0x55FF5252;
+        preview.setShowLineNumbers(true);
+        preview.setLineNumberColor(lineNumber);
+        preview.setShowBracketMatch(true);
+        preview.setBracketMatchColor(bracketMatch);
+        preview.setShowHighRiskHighlight(true);
+        preview.setHighRiskHighlightColor(highRisk);
+        preview.setPreviewContent(buildPreviewText(config));
+    }
+
+    private String buildPreviewText(ThemeRepository.ThemeConfig config) {
+        String family = config.fontFamily == 0 ? "等宽" : "系统";
+        int sizeSp = Math.round(config.fontSizeSp);
+        String lineHeight = String.format(java.util.Locale.getDefault(), "%.1f", config.lineHeight);
+        String letterSpacing = String.format(java.util.Locale.getDefault(), "%.1f", config.letterSpacing);
+        return "orcTerm 预览\n"
+            + "字体: " + family + "  大小: " + sizeSp + "sp  粗细: " + config.fontWeight + "\n"
+            + "行高: " + lineHeight + "  字距: " + letterSpacing + "\n"
+            + "括号匹配: (foo[bar]{baz})\n"
+            + "高危命令: rm -rf /\n"
+            + "命令示例: ls -la /var/log\n";
+    }
+
+    private int[] buildEffectiveScheme(ThemeRepository.ThemeConfig config) {
+        int[] scheme = new int[16];
+        if (config.ansiColors != null && config.ansiColors.length >= 16) {
+            System.arraycopy(config.ansiColors, 0, scheme, 0, 16);
+        } else {
+            System.arraycopy(THEME_TERMIUS, 0, scheme, 0, 16);
+        }
+        scheme[0] = config.backgroundColor;
+        scheme[7] = config.foregroundColor;
+        scheme[15] = config.foregroundColor;
+        return ensureReadableScheme(scheme);
+    }
+
+    private void setRgbInputs(EditText r, EditText g, EditText b, int color) {
+        r.setText(String.valueOf(Color.red(color)));
+        g.setText(String.valueOf(Color.green(color)));
+        b.setText(String.valueOf(Color.blue(color)));
+    }
+
+    private Integer parseRgbColor(EditText r, EditText g, EditText b, Integer fallback) {
+        try {
+            int rv = clampInt(Integer.parseInt(r.getText().toString().trim()), 0, 255);
+            int gv = clampInt(Integer.parseInt(g.getText().toString().trim()), 0, 255);
+            int bv = clampInt(Integer.parseInt(b.getText().toString().trim()), 0, 255);
+            return Color.rgb(rv, gv, bv);
+        } catch (Exception e) {
+            if (fallback != null) return fallback;
+            return null;
+        }
+    }
+
+    private int clampInt(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private float clampFloat(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     /**
      * 显示颜色选择器
      */
@@ -2222,12 +3352,210 @@ public class TerminalActivity extends AppCompatActivity {
         }
     }
 
+    private void applyThemeJsonFromPrefs() {
+        String json = terminalPrefs.getString(PREF_THEME_JSON, null);
+        if (json == null || json.isEmpty()) return;
+        try {
+            Object parsed = new org.json.JSONTokener(json).nextValue();
+            if (parsed instanceof JSONObject) {
+                JSONObject obj = (JSONObject) parsed;
+                if (themeMatchesHost(obj)) {
+                    applyThemeJsonObject(obj);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private boolean themeMatchesHost(JSONObject obj) {
+        JSONObject bindings = null;
+        JSONObject advanced = obj.optJSONObject("advanced");
+        if (advanced != null) {
+            bindings = advanced.optJSONObject("bindings");
+        }
+        if (bindings == null) {
+            bindings = obj.optJSONObject("bindings");
+        }
+        JSONArray hosts = bindings != null ? bindings.optJSONArray("hosts") : null;
+        if (hosts == null || hosts.length() == 0) return true;
+        if (TextUtils.isEmpty(hostname)) return false;
+        for (int i = 0; i < hosts.length(); i++) {
+            JSONObject h = hosts.optJSONObject(i);
+            if (h == null) continue;
+            String hostValue = h.optString("hostname", "");
+            int portValue = h.optInt("port", -1);
+            String userValue = h.optString("username", "");
+            if (!hostValue.isEmpty() && !hostValue.equalsIgnoreCase(hostname)) {
+                continue;
+            }
+            if (portValue > 0 && portValue != port) {
+                continue;
+            }
+            if (!userValue.isEmpty() && (username == null || !userValue.equalsIgnoreCase(username))) {
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void applyThemeJsonObject(JSONObject obj) {
+        JSONObject colors = obj.optJSONObject("colors");
+        if (colors != null) {
+            Integer bg = parseColorSilent(colors.opt("background"));
+            Integer fg = parseColorSilent(colors.opt("foreground"));
+            if (bg != null || fg != null) {
+                setCustomColors(bg != null ? bg : customBackgroundColor, fg != null ? fg : customForegroundColor);
+            }
+            Integer selection = parseColorSilent(colors.opt("selectionBackground"));
+            if (selection != null) {
+                currentSelectionColor = selection;
+                terminalPrefs.edit().putInt(PREF_SELECTION_COLOR, currentSelectionColor).apply();
+            }
+            Integer search = parseColorSilent(colors.opt("searchHighlight"));
+            if (search != null) {
+                currentSearchHighlightColor = search;
+                terminalPrefs.edit().putInt(PREF_SEARCH_HIGHLIGHT_COLOR, currentSearchHighlightColor).apply();
+            }
+        }
+        int[] ansi = resolveAnsiScheme(obj);
+        if (ansi != null) {
+            applyColorScheme(ansi);
+            saveCurrentColorScheme();
+        }
+        JSONObject cursor = obj.optJSONObject("cursor");
+        if (cursor != null) {
+            String style = cursor.optString("style", "");
+            if (!style.isEmpty()) {
+                TerminalView.CursorStyle s = parseCursorStyle(style);
+                terminalPrefs.edit().putInt("terminal_cursor_style", s.ordinal()).apply();
+            }
+            if (cursor.has("blink")) {
+                terminalPrefs.edit().putBoolean("terminal_cursor_blink", cursor.optBoolean("blink", true)).apply();
+            }
+            Integer cursorColor = parseColorSilent(cursor.opt("color"));
+            if (cursorColor != null) {
+                terminalPrefs.edit().putInt("terminal_cursor_color", cursorColor).apply();
+            }
+        }
+        JSONObject font = obj.optJSONObject("font");
+        if (font != null) {
+            double sizeSp = font.optDouble("sizeSp", -1);
+            if (sizeSp > 0) {
+                float density = getResources().getDisplayMetrics().scaledDensity;
+                int sizePx = Math.max(8, Math.round((float) sizeSp * density));
+                applyFontSize(sizePx);
+            }
+            double lineHeight = font.optDouble("lineHeight", -1);
+            if (lineHeight > 0) {
+                currentLineHeight = (float) lineHeight;
+                terminalPrefs.edit().putFloat(PREF_LINE_HEIGHT, currentLineHeight).apply();
+            }
+            if (font.has("letterSpacing")) {
+                currentLetterSpacing = (float) font.optDouble("letterSpacing", currentLetterSpacing);
+                terminalPrefs.edit().putFloat(PREF_LETTER_SPACING, currentLetterSpacing).apply();
+            }
+            String family = font.optString("family", "");
+            if (!family.isEmpty()) {
+                currentFontFamily = "monospace".equalsIgnoreCase(family) ? 0 : 1;
+                terminalPrefs.edit().putInt(PREF_FONT_FAMILY, currentFontFamily).apply();
+            }
+            int weight = font.optInt("boldWeight", currentFontWeight);
+            if (weight > 0) {
+                currentFontWeight = weight;
+                terminalPrefs.edit().putInt(PREF_FONT_WEIGHT, currentFontWeight).apply();
+            }
+        }
+        JSONObject advanced = obj.optJSONObject("advanced");
+        if (advanced != null) {
+            double opacity = advanced.optDouble("backgroundOpacity", -1);
+            if (opacity >= 0 && opacity <= 1) {
+                terminalBackgroundAlpha = Math.round((float) (opacity * 255f));
+                terminalPrefs.edit().putInt(PREF_BG_ALPHA, terminalBackgroundAlpha).apply();
+            }
+        }
+        applyDisplayPreferencesToAllViews();
+    }
+
+    private TerminalView.CursorStyle parseCursorStyle(String style) {
+        if ("underline".equalsIgnoreCase(style)) return TerminalView.CursorStyle.UNDERLINE;
+        if ("beam".equalsIgnoreCase(style)) return TerminalView.CursorStyle.BAR;
+        return TerminalView.CursorStyle.BLOCK;
+    }
+
+    private void handleThemeAction(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getStringExtra("theme_action");
+        if (action == null || action.isEmpty()) return;
+        intent.removeExtra("theme_action");
+        if ("editor".equals(action)) {
+            showThemeConfigDialog();
+        } else if ("import".equals(action)) {
+            showImportThemeDialog();
+        } else if ("export".equals(action)) {
+            showExportThemeDialog();
+        }
+    }
+
+    private int[] resolveAnsiScheme(JSONObject obj) {
+        JSONObject ansi = obj.optJSONObject("ansi");
+        if (ansi == null) return null;
+        JSONObject setObj = null;
+        JSONObject sets = ansi.optJSONObject("sets");
+        String active = ansi.optString("active", "");
+        if (sets != null && !active.isEmpty()) {
+            setObj = sets.optJSONObject(active);
+        }
+        if (setObj == null && sets != null && sets.length() > 0) {
+            java.util.Iterator<String> it = sets.keys();
+            if (it.hasNext()) {
+                setObj = sets.optJSONObject(it.next());
+            }
+        }
+        if (setObj == null) {
+            setObj = ansi;
+        }
+        return parseAnsiSchemeFromObject(setObj);
+    }
+
+    private int[] parseAnsiSchemeFromObject(JSONObject ansi) {
+        if (ansi == null) return null;
+        JSONArray palette = ansi.optJSONArray("palette");
+        if (palette != null && palette.length() >= 16) {
+            int[] scheme = new int[16];
+            for (int i = 0; i < 16; i++) {
+                scheme[i] = parseColorFromJsonValue(palette.opt(i));
+            }
+            return scheme;
+        }
+        JSONObject standard = ansi.optJSONObject("standard");
+        JSONObject bright = ansi.optJSONObject("bright");
+        if (standard == null && bright == null) return null;
+        int[] scheme = new int[16];
+        scheme[0] = parseColorFromJsonValue(standard != null ? standard.opt("black") : null);
+        scheme[1] = parseColorFromJsonValue(standard != null ? standard.opt("red") : null);
+        scheme[2] = parseColorFromJsonValue(standard != null ? standard.opt("green") : null);
+        scheme[3] = parseColorFromJsonValue(standard != null ? standard.opt("yellow") : null);
+        scheme[4] = parseColorFromJsonValue(standard != null ? standard.opt("blue") : null);
+        scheme[5] = parseColorFromJsonValue(standard != null ? standard.opt("magenta") : null);
+        scheme[6] = parseColorFromJsonValue(standard != null ? standard.opt("cyan") : null);
+        scheme[7] = parseColorFromJsonValue(standard != null ? standard.opt("white") : null);
+        scheme[8] = parseColorFromJsonValue(bright != null ? bright.opt("brightBlack") : null);
+        scheme[9] = parseColorFromJsonValue(bright != null ? bright.opt("brightRed") : null);
+        scheme[10] = parseColorFromJsonValue(bright != null ? bright.opt("brightGreen") : null);
+        scheme[11] = parseColorFromJsonValue(bright != null ? bright.opt("brightYellow") : null);
+        scheme[12] = parseColorFromJsonValue(bright != null ? bright.opt("brightBlue") : null);
+        scheme[13] = parseColorFromJsonValue(bright != null ? bright.opt("brightMagenta") : null);
+        scheme[14] = parseColorFromJsonValue(bright != null ? bright.opt("brightCyan") : null);
+        scheme[15] = parseColorFromJsonValue(bright != null ? bright.opt("brightWhite") : null);
+        return scheme;
+    }
+
     /**
      * 显示导入主题对话框
      */
     private void showImportThemeDialog() {
         android.widget.EditText edit = new android.widget.EditText(this);
-        edit.setHint("粘贴主题JSON或以逗号分隔的16个颜色值");
+        edit.setHint("粘贴主题JSON结构/数组或以逗号分隔的16个颜色值");
         edit.setHeight(120);
         
         new AlertDialog.Builder(this)
@@ -2235,7 +3563,7 @@ public class TerminalActivity extends AppCompatActivity {
             .setView(edit)
             .setPositiveButton("导入", (d, w) -> {
                 String input = edit.getText().toString().trim();
-                if (input.startsWith("[")) {
+                if (input.startsWith("{") || input.startsWith("[")) {
                     importThemeFromJson(input);
                 } else {
                     importThemeFromCsv(input);
@@ -2250,15 +3578,26 @@ public class TerminalActivity extends AppCompatActivity {
      */
     private void importThemeFromJson(String json) {
         try {
-            org.json.JSONArray array = new org.json.JSONArray(json);
-            if (array.length() >= 16) {
-                int[] colors = new int[16];
-                for (int i = 0; i < 16; i++) {
-                    colors[i] = parseColorFromValue(array.getString(i));
+            Object parsed = new org.json.JSONTokener(json).nextValue();
+            if (parsed instanceof org.json.JSONObject) {
+                JSONObject obj = normalizeThemeJsonObject((JSONObject) parsed);
+                applyThemeJsonObject(obj);
+                terminalPrefs.edit().putString(PREF_THEME_JSON, obj.toString()).apply();
+            } else if (parsed instanceof org.json.JSONArray) {
+                org.json.JSONArray array = (org.json.JSONArray) parsed;
+                if (array.length() >= 16) {
+                    int[] colors = new int[16];
+                    for (int i = 0; i < 16; i++) {
+                        colors[i] = parseColorFromJsonValue(array.get(i));
+                    }
+                    JSONObject obj = buildThemeJsonFromPalette(colors, "Imported");
+                    applyThemeJsonObject(obj);
+                    terminalPrefs.edit().putString(PREF_THEME_JSON, obj.toString()).apply();
+                } else {
+                    Toast.makeText(this, "主题需要包含至少16个颜色", Toast.LENGTH_SHORT).show();
                 }
-                applyColorScheme(colors);
             } else {
-                Toast.makeText(this, "主题需要包含至少16个颜色", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "无效的JSON格式", Toast.LENGTH_SHORT).show();
             }
         } catch (Exception e) {
             Toast.makeText(this, "无效的JSON格式", Toast.LENGTH_SHORT).show();
@@ -2275,7 +3614,9 @@ public class TerminalActivity extends AppCompatActivity {
             for (int i = 0; i < 16; i++) {
                 colors[i] = parseColorFromValue(parts[i].trim());
             }
-            applyColorScheme(colors);
+            JSONObject obj = buildThemeJsonFromPalette(colors, "Imported");
+            applyThemeJsonObject(obj);
+            terminalPrefs.edit().putString(PREF_THEME_JSON, obj.toString()).apply();
         } else {
             Toast.makeText(this, "需要至少16个颜色值", Toast.LENGTH_SHORT).show();
         }
@@ -2296,17 +3637,279 @@ public class TerminalActivity extends AppCompatActivity {
         return currentScheme[0]; // 默认黑色
     }
 
+    private int parseColorFromJsonValue(Object value) {
+        if (value instanceof Number) {
+            int color = ((Number) value).intValue();
+            if ((color & 0xFF000000) == 0) {
+                color |= 0xFF000000;
+            }
+            return color;
+        }
+        if (value instanceof String) {
+            return parseColorFromValue((String) value);
+        }
+        return currentScheme[0];
+    }
+
+    private Integer parseColorOptional(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number) {
+            int color = ((Number) value).intValue();
+            if ((color & 0xFF000000) == 0) {
+                color |= 0xFF000000;
+            }
+            return color;
+        }
+        if (value instanceof String) {
+            return parseColorInput((String) value);
+        }
+        return null;
+    }
+
+    private Integer parseColorSilent(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number) {
+            int color = ((Number) value).intValue();
+            if ((color & 0xFF000000) == 0) {
+                color |= 0xFF000000;
+            }
+            return color;
+        }
+        if (value instanceof String) {
+            String v = ((String) value).trim();
+            if (v.isEmpty()) return null;
+            if (!v.startsWith("#")) {
+                v = "#" + v;
+            }
+            try {
+                return Color.parseColor(v);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private JSONObject buildThemeJsonFromPalette(int[] colors, String name) {
+        JSONObject obj = new JSONObject();
+        JSONArray palette = new JSONArray();
+        for (int i = 0; i < 16; i++) {
+            palette.put(String.format("#%06X", colors[i] & 0x00FFFFFF));
+        }
+        JSONObject standard = new JSONObject();
+        JSONObject bright = new JSONObject();
+        try {
+            standard.put("black", palette.get(0));
+            standard.put("red", palette.get(1));
+            standard.put("green", palette.get(2));
+            standard.put("yellow", palette.get(3));
+            standard.put("blue", palette.get(4));
+            standard.put("magenta", palette.get(5));
+            standard.put("cyan", palette.get(6));
+            standard.put("white", palette.get(7));
+            bright.put("brightBlack", palette.get(8));
+            bright.put("brightRed", palette.get(9));
+            bright.put("brightGreen", palette.get(10));
+            bright.put("brightYellow", palette.get(11));
+            bright.put("brightBlue", palette.get(12));
+            bright.put("brightMagenta", palette.get(13));
+            bright.put("brightCyan", palette.get(14));
+            bright.put("brightWhite", palette.get(15));
+            JSONObject ansiSet = new JSONObject();
+            ansiSet.put("palette", palette);
+            ansiSet.put("standard", standard);
+            ansiSet.put("bright", bright);
+            JSONObject sets = new JSONObject();
+            sets.put("default", ansiSet);
+            JSONObject ansi = new JSONObject();
+            ansi.put("active", "default");
+            ansi.put("sets", sets);
+            JSONObject base = new JSONObject();
+            base.put("background", palette.get(0));
+            base.put("foreground", palette.get(7));
+            base.put("selectionBackground", "#5533B5E5");
+            base.put("selectionForeground", palette.get(7));
+            base.put("currentLine", palette.get(8));
+            base.put("lineNumber", palette.get(8));
+            base.put("matchBracket", palette.get(3));
+            base.put("searchHighlight", "#66FFD54F");
+            obj.put("version", 1);
+            obj.put("id", getOrCreateThemeId());
+            obj.put("name", name == null ? "Custom" : name);
+            obj.put("type", "dark");
+            obj.put("tags", new JSONArray());
+            long now = System.currentTimeMillis();
+            long createdAt = terminalPrefs.getLong(PREF_THEME_CREATED_AT, 0);
+            if (createdAt == 0) {
+                createdAt = now;
+                terminalPrefs.edit().putLong(PREF_THEME_CREATED_AT, createdAt).apply();
+            }
+            obj.put("createdAt", createdAt);
+            obj.put("updatedAt", now);
+            obj.put("colors", base);
+            obj.put("ansi", ansi);
+            obj.put("cursor", buildCursorJson());
+            obj.put("font", buildFontJson());
+            obj.put("ui", buildUiJson());
+            obj.put("behavior", buildBehaviorJson());
+            obj.put("advanced", buildAdvancedJson());
+        } catch (JSONException ignored) {}
+        return obj;
+    }
+
+    private JSONObject normalizeThemeJsonObject(JSONObject obj) {
+        long now = System.currentTimeMillis();
+        try {
+            if (!obj.has("version")) obj.put("version", 1);
+            if (!obj.has("id")) obj.put("id", getOrCreateThemeId());
+            if (!obj.has("name")) obj.put("name", "Custom");
+            if (!obj.has("type")) obj.put("type", "dark");
+            if (!obj.has("tags")) obj.put("tags", new JSONArray());
+            long createdAt = obj.optLong("createdAt", 0);
+            if (createdAt == 0) {
+                createdAt = terminalPrefs.getLong(PREF_THEME_CREATED_AT, 0);
+                if (createdAt == 0) {
+                    createdAt = now;
+                }
+                obj.put("createdAt", createdAt);
+                terminalPrefs.edit().putLong(PREF_THEME_CREATED_AT, createdAt).apply();
+            }
+            obj.put("updatedAt", now);
+        } catch (JSONException ignored) {}
+        return obj;
+    }
+
+    private String getOrCreateThemeId() {
+        String id = terminalPrefs.getString(PREF_THEME_ID, null);
+        if (id == null || id.isEmpty()) {
+            id = java.util.UUID.randomUUID().toString();
+            terminalPrefs.edit().putString(PREF_THEME_ID, id).apply();
+        }
+        return id;
+    }
+
+    private JSONObject buildCursorJson() {
+        JSONObject cursor = new JSONObject();
+        try {
+            int styleIndex = terminalPrefs.getInt("terminal_cursor_style", 0);
+            String style = styleIndex == TerminalView.CursorStyle.UNDERLINE.ordinal() ? "underline"
+                : styleIndex == TerminalView.CursorStyle.BAR.ordinal() ? "beam" : "block";
+            cursor.put("style", style);
+            cursor.put("blink", terminalPrefs.getBoolean("terminal_cursor_blink", true));
+            cursor.put("blinkIntervalMs", 500);
+            cursor.put("color", formatColor(terminalPrefs.getInt("terminal_cursor_color", 0xFFFFFFFF)));
+            JSONObject vim = new JSONObject();
+            vim.put("insert", new JSONObject().put("style", style));
+            vim.put("normal", new JSONObject().put("style", "block"));
+            vim.put("visual", new JSONObject().put("style", "underline"));
+            cursor.put("vimMode", vim);
+        } catch (JSONException ignored) {}
+        return cursor;
+    }
+
+    private JSONObject buildFontJson() {
+        JSONObject font = new JSONObject();
+        try {
+            float density = getResources().getDisplayMetrics().scaledDensity;
+            float sizeSp = density == 0 ? 12 : currentFontSize / density;
+            font.put("family", currentFontFamily == 0 ? "monospace" : "system");
+            font.put("fallback", new JSONArray().put("monospace").put("sans-serif"));
+            font.put("sizeSp", Math.max(6, Math.round(sizeSp * 10f) / 10f));
+            font.put("lineHeight", currentLineHeight);
+            font.put("letterSpacing", currentLetterSpacing);
+            font.put("boldWeight", 600);
+            font.put("italicStyle", "oblique");
+            font.put("ligatures", false);
+            font.put("nerdFont", false);
+        } catch (JSONException ignored) {}
+        return font;
+    }
+
+    private JSONObject buildUiJson() {
+        JSONObject ui = new JSONObject();
+        try {
+            JSONObject padding = new JSONObject();
+            padding.put("top", 0);
+            padding.put("right", 0);
+            padding.put("bottom", 0);
+            padding.put("left", 0);
+            ui.put("padding", padding);
+            JSONObject scrollbar = new JSONObject();
+            scrollbar.put("visible", true);
+            scrollbar.put("width", 2);
+            scrollbar.put("color", "#66FFFFFF");
+            scrollbar.put("autoHide", true);
+            ui.put("scrollbar", scrollbar);
+            JSONObject tab = new JSONObject();
+            tab.put("active", "#1F2A33");
+            tab.put("inactive", "#12161C");
+            tab.put("textActive", "#FFFFFF");
+            tab.put("textInactive", "#9AA4B2");
+            ui.put("tab", tab);
+            JSONObject status = new JSONObject();
+            status.put("connected", "#4CAF50");
+            status.put("connecting", "#FF9800");
+            status.put("disconnected", "#F44336");
+            ui.put("status", status);
+        } catch (JSONException ignored) {}
+        return ui;
+    }
+
+    private JSONObject buildBehaviorJson() {
+        JSONObject behavior = new JSONObject();
+        try {
+            boolean autoScroll = terminalPrefs.getBoolean("terminal_auto_scroll_output", true);
+            boolean smoothScroll = terminalPrefs.getBoolean("terminal_smooth_scroll", true);
+            boolean copyOnSelect = terminalPrefs.getBoolean("terminal_copy_on_select", true);
+            boolean pasteOnTap = terminalPrefs.getBoolean("terminal_paste_on_tap", false);
+            boolean bellAudio = terminalPrefs.getBoolean("terminal_bell_audio", false);
+            boolean bellVisual = terminalPrefs.getBoolean("terminal_bell_visual", true);
+            behavior.put("autoScrollOnOutput", autoScroll);
+            behavior.put("smoothScroll", smoothScroll);
+            behavior.put("copyOnSelect", copyOnSelect);
+            behavior.put("pasteOnTap", pasteOnTap);
+            JSONObject bell = new JSONObject();
+            bell.put("audio", bellAudio);
+            bell.put("visual", bellVisual);
+            behavior.put("bell", bell);
+        } catch (JSONException ignored) {}
+        return behavior;
+    }
+
+    private JSONObject buildAdvancedJson() {
+        JSONObject advanced = new JSONObject();
+        try {
+            float opacity = Math.max(0f, Math.min(1f, terminalBackgroundAlpha / 255f));
+            advanced.put("backgroundOpacity", Math.round(opacity * 100f) / 100f);
+            advanced.put("blur", 0);
+            JSONObject root = new JSONObject();
+            root.put("enabled", true);
+            root.put("color", "#FF5252");
+            advanced.put("rootHighlight", root);
+            JSONObject danger = new JSONObject();
+            danger.put("enabled", true);
+            JSONArray patterns = new JSONArray();
+            patterns.put("rm -rf");
+            patterns.put("mkfs");
+            patterns.put("dd if=");
+            patterns.put(":(){:|:&};:");
+            danger.put("patterns", patterns);
+            advanced.put("dangerCommand", danger);
+            JSONObject bindings = new JSONObject();
+            bindings.put("hosts", new JSONArray());
+            bindings.put("environments", new JSONArray().put("production").put("staging").put("dev"));
+            advanced.put("bindings", bindings);
+        } catch (JSONException ignored) {}
+        return advanced;
+    }
+
+
     /**
      * 显示导出主题对话框
      */
     private void showExportThemeDialog() {
-        // 创建JSON格式
-        org.json.JSONArray jsonArray = new org.json.JSONArray();
-        for (int i = 0; i < 16; i++) {
-            jsonArray.put(String.format("#%06X", currentScheme[i] & 0x00FFFFFF));
-        }
-        
-        String jsonExport = jsonArray.toString();
+        JSONObject jsonObject = buildThemeJsonFromPalette(currentScheme, "Custom");
+        String jsonExport = jsonObject.toString();
         
         // 创建CSV格式
         StringBuilder csvBuilder = new StringBuilder();
@@ -2326,7 +3929,7 @@ public class TerminalActivity extends AppCompatActivity {
         
         android.widget.RadioGroup radioGroup = new android.widget.RadioGroup(this);
         android.widget.RadioButton jsonRadio = new android.widget.RadioButton(this);
-        jsonRadio.setText("JSON格式");
+        jsonRadio.setText("JSON结构");
         jsonRadio.setId(1);
         android.widget.RadioButton csvRadio = new android.widget.RadioButton(this);
         csvRadio.setText("CSV格式");
@@ -2371,5 +3974,80 @@ public class TerminalActivity extends AppCompatActivity {
             this.command = command;
             this.custom = custom;
         }
+    }
+
+    private HostKeyVerifier createHostKeyVerifier() {
+        return (host, port, fingerprint, status) -> {
+            AtomicBoolean result = new AtomicBoolean(false);
+            AtomicBoolean completed = new AtomicBoolean(false);
+            
+            runOnUiThread(() -> {
+                AlertDialog.Builder builder = new AlertDialog.Builder(TerminalActivity.this);
+                
+                String message;
+                
+                if (status == 2) { // NOT FOUND
+                    builder.setTitle("SSH Host Key Verification");
+                    message = "The authenticity of host '" + host + "' can't be established.\n" + 
+                              "Fingerprint (SHA256): " + fingerprint + "\n\n" +
+                              "Are you sure you want to continue connecting?";
+                    builder.setMessage(message);
+                    builder.setPositiveButton("Connect", (d, w) -> {
+                        result.set(true);
+                        synchronized(completed) { completed.set(true); completed.notifyAll(); }
+                    });
+                    builder.setNegativeButton("Cancel", (d, w) -> {
+                         result.set(false);
+                         synchronized(completed) { completed.set(true); completed.notifyAll(); }
+                    });
+                } else if (status == 1) { // MISMATCH
+                    builder.setTitle("⚠️ SEVERE SECURITY WARNING");
+                    message = "REMOTE HOST IDENTIFICATION HAS CHANGED!\n\n" +
+                              "IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\n" +
+                              "Someone could be eavesdropping on you right now (man-in-the-middle attack)!\n" +
+                              "It is also possible that the host key has just been changed.\n\n" +
+                              "New Fingerprint (SHA256): " + fingerprint + "\n\n" +
+                              "Do you want to proceed anyway?";
+                    
+                    builder.setIcon(android.R.drawable.ic_dialog_alert);
+                    builder.setMessage(message);
+                    
+                    builder.setPositiveButton("Connect Anyway", (d, w) -> {
+                        result.set(true);
+                        synchronized(completed) { completed.set(true); completed.notifyAll(); }
+                    });
+                    builder.setNegativeButton("Cancel", (d, w) -> {
+                        result.set(false);
+                        synchronized(completed) { completed.set(true); completed.notifyAll(); }
+                    });
+                } else {
+                     // Failure or other
+                     result.set(false);
+                     synchronized(completed) { completed.set(true); completed.notifyAll(); }
+                     return;
+                }
+                
+                builder.setCancelable(false);
+                AlertDialog dialog = builder.create();
+                dialog.show();
+                
+                if (status == 1) {
+                    try {
+                        int titleId = getResources().getIdentifier("alertTitle", "id", "android");
+                        android.widget.TextView titleView = dialog.findViewById(titleId);
+                        if (titleView != null) {
+                            titleView.setTextColor(android.graphics.Color.RED);
+                        }
+                    } catch (Exception ignored) {}
+                }
+            });
+            
+            synchronized(completed) {
+                while (!completed.get()) {
+                    try { completed.wait(); } catch (InterruptedException e) {}
+                }
+            }
+            return result.get();
+        };
     }
 }

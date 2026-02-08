@@ -14,6 +14,9 @@ import com.orcterm.core.docker.DockerVolume;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 数据卷列表适配器
+ */
 public class DockerVolumeAdapter extends RecyclerView.Adapter<DockerVolumeAdapter.ViewHolder> {
 
     private List<DockerVolume> volumes = new ArrayList<>();

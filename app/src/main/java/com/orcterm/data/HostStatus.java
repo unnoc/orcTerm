@@ -1,5 +1,8 @@
 package com.orcterm.data;
 
+/**
+ * 主机状态数据模型
+ */
 public class HostStatus {
     public String cpuUsage = "0%";
     public int cpuUsagePercent = 0;

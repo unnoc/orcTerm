@@ -35,6 +35,7 @@ import com.orcterm.ui.DockerActivity;
 import com.orcterm.ui.SftpActivity;
 import com.orcterm.ui.MainViewModel;
 import com.orcterm.ui.nav.NavViewModel;
+import com.orcterm.util.CommandConstants;
 
 import java.util.Collections;
 import java.util.Comparator;
@@ -122,6 +123,18 @@ public class ServersFragment extends Fragment {
             if ("list_density".equals(key)) {
                 mAdapter.setLayoutDensity(sharedPreferences.getInt(key, 1));
             }
+            if ("home_host_list_auto_fetch_enabled".equals(key)) {
+                // 实时响应首页主机列表自动获取信息开关
+                boolean enabled = sharedPreferences.getBoolean(key, false);
+                if (enabled) {
+                    startMonitoring();
+                } else {
+                    stopMonitoring();
+                    if (mAdapter != null) {
+                        mAdapter.clearStatus();
+                    }
+                }
+            }
         };
         prefs.registerOnSharedPreferenceChangeListener(prefListener);
         
@@ -151,7 +164,15 @@ public class ServersFragment extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
-        startMonitoring();
+        // 首页主机列表是否自动获取信息
+        if (isHomeHostListAutoFetchEnabled()) {
+            startMonitoring();
+        } else {
+            stopMonitoring();
+            if (mAdapter != null) {
+                mAdapter.clearStatus();
+            }
+        }
     }
 
     @Override
@@ -164,6 +185,11 @@ public class ServersFragment extends Fragment {
         if (monitorScheduler != null && !monitorScheduler.isShutdown()) return;
         monitorScheduler = Executors.newSingleThreadScheduledExecutor();
         monitorScheduler.scheduleWithFixedDelay(this::refreshStats, 0, 5000, TimeUnit.MILLISECONDS);
+    }
+
+    // 判断首页主机列表是否启用自动获取信息
+    private boolean isHomeHostListAutoFetchEnabled() {
+        return prefs != null && prefs.getBoolean("home_host_list_auto_fetch_enabled", false);
     }
 
     private void stopMonitoring() {
@@ -214,7 +240,7 @@ public class ServersFragment extends Fragment {
             }
 
             // Execute composite command
-            String cmd = "cat /proc/uptime; echo 'SECTION_CPU'; grep 'cpu ' /proc/stat; echo 'SECTION_CORES'; grep -c ^processor /proc/cpuinfo; echo 'SECTION_MEM'; cat /proc/meminfo; echo 'SECTION_NET'; cat /proc/net/dev; echo 'SECTION_DISK_USAGE'; df -B1 / | tail -n 1; echo 'SECTION_DISK_IO'; cat /proc/diskstats";
+            String cmd = CommandConstants.CMD_HOST_STATS_COMPOSITE;
             String output = ssh.exec(handle, cmd);
             long latency = System.currentTimeMillis() - start;
             
@@ -557,10 +583,16 @@ public class ServersFragment extends Fragment {
         popup.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case 0:
+                    // 保存首页主机偏好
+                    String homeLabel = buildHomeHostLabel(host);
+                    prefs.edit()
+                        .putLong("home_host_id", host.id)
+                        .putString("home_host_label", homeLabel)
+                        .apply();
                     navViewModel.setCurrentHostId(host.id);
                     View root = getView();
                     if (root != null) {
-                        Snackbar.make(root, "已切换至 " + host.alias, Snackbar.LENGTH_SHORT).show();
+                        Snackbar.make(root, "已切换至 " + homeLabel, Snackbar.LENGTH_SHORT).show();
                     }
                     break;
                 case 1: editHost(host); break;
@@ -720,6 +752,11 @@ public class ServersFragment extends Fragment {
         intent.putExtra("container_engine", host.containerEngine);
         intent.putExtra("status", host.status);
         intent.putExtra("last_connected", host.lastConnected);
+        intent.putExtra("connect_timeout_sec", host.connectTimeoutSec);
+        intent.putExtra("keepalive_interval_sec", host.keepAliveIntervalSec);
+        intent.putExtra("hostkey_policy", host.hostKeyPolicy);
+        intent.putExtra("environment_type", host.environmentType);
+        intent.putExtra("terminal_theme_preset", host.terminalThemePreset);
         startActivity(intent);
     }
 
@@ -744,6 +781,16 @@ public class ServersFragment extends Fragment {
         openActivity(HostDetailActivity.class, host);
     }
 
+    private String buildHomeHostLabel(HostEntity host) {
+        if (host == null) return "";
+        if (!TextUtils.isEmpty(host.alias)) return host.alias;
+        String hostname = host.hostname == null ? "" : host.hostname;
+        String username = host.username == null ? "" : host.username;
+        if (TextUtils.isEmpty(username)) return hostname;
+        if (TextUtils.isEmpty(hostname)) return username;
+        return username + "@" + hostname;
+    }
+
     private void diagnoseHost(HostEntity host) {
         Toast.makeText(requireContext(), "正在诊断 " + host.alias + "...", Toast.LENGTH_SHORT).show();
         executor.execute(() -> {
@@ -762,9 +809,9 @@ public class ServersFragment extends Fragment {
 
                 if (auth != 0) throw new Exception("认证失败");
 
-                String osRelease = ssh.exec(handle, "cat /etc/os-release");
-                String uname = ssh.exec(handle, "uname -a");
-                String uptime = ssh.exec(handle, "uptime");
+                String osRelease = ssh.exec(handle, CommandConstants.CMD_OS_RELEASE);
+                String uname = ssh.exec(handle, CommandConstants.CMD_UNAME_A);
+                String uptime = ssh.exec(handle, CommandConstants.CMD_UPTIME);
 
                 String osName = "Linux";
                 String osVersion = "";
@@ -824,7 +871,7 @@ public class ServersFragment extends Fragment {
     }
 
     private void powerAction(HostEntity host, String action) {
-        String cmd = action.equals("reboot") ? "sudo reboot" : "sudo shutdown -h now";
+        String cmd = action.equals("reboot") ? CommandConstants.CMD_SUDO_REBOOT : CommandConstants.CMD_SUDO_SHUTDOWN;
         executor.execute(() -> {
             SshNative ssh = new SshNative();
             long handle = 0;

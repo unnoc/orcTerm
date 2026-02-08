@@ -81,4 +81,12 @@
     <color name="md_theme_dark_surfaceTint">#82CFFF</color>
     <color name="md_theme_dark_outlineVariant">#41484D</color>
     <color name="md_theme_dark_scrim">#000000</color>
+
+    <color name="terminal_termius_bg">#0E1116</color>
+    <color name="terminal_termius_surface">#141922</color>
+    <color name="terminal_termius_surface_variant">#1D2430</color>
+    <color name="terminal_key_bg">#222B38</color>
+    <color name="terminal_key_bg_active">#2E3A4C</color>
+    <color name="terminal_key_text">#C9D4E1</color>
+    <color name="terminal_key_text_active">#FFFFFF</color>
 </resources>

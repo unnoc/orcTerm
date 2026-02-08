@@ -36,7 +36,10 @@ import com.google.android.material.button.MaterialButton;
 import com.orcterm.R;
 import com.orcterm.core.sftp.SftpFile;
 import com.orcterm.core.ssh.SshNative;
+import com.orcterm.core.session.SessionManager;
+import com.orcterm.core.terminal.TerminalSession;
 import com.orcterm.ui.SftpTransferService;
+import com.orcterm.util.CommandConstants;
 
 import org.json.JSONArray;
 
@@ -83,6 +86,7 @@ public class SftpActivity extends AppCompatActivity {
     
     private SshNative sshNative;
     private long sshHandle = 0;
+    private boolean isSharedSession = false;
     
     private String hostname, username, password;
     private int port;
@@ -195,15 +199,15 @@ public class SftpActivity extends AppCompatActivity {
                              String name = f.name;
                              String fullPath = getFullPath(name);
                              // Simple extraction logic based on extension
-                             if (name.endsWith(".zip")) cmd = "unzip -o \"" + fullPath + "\"";
-                             else if (name.endsWith(".tar")) cmd = "tar -xf \"" + fullPath + "\"";
-                             else if (name.endsWith(".tar.gz") || name.endsWith(".tgz")) cmd = "tar -xzf \"" + fullPath + "\"";
-                             else if (name.endsWith(".gz")) cmd = "gzip -d \"" + fullPath + "\"";
-                             else if (name.endsWith(".rar")) cmd = "unrar x -y \"" + fullPath + "\"";
-                             else if (name.endsWith(".7z")) cmd = "7z x -y \"" + fullPath + "\"";
+                            if (name.endsWith(".zip")) cmd = String.format(CommandConstants.CMD_UNZIP, fullPath);
+                            else if (name.endsWith(".tar")) cmd = String.format(CommandConstants.CMD_TAR_EXTRACT, fullPath);
+                            else if (name.endsWith(".tar.gz") || name.endsWith(".tgz")) cmd = String.format(CommandConstants.CMD_TAR_GZ_EXTRACT, fullPath);
+                            else if (name.endsWith(".gz")) cmd = String.format(CommandConstants.CMD_GZIP_DECOMPRESS, fullPath);
+                            else if (name.endsWith(".rar")) cmd = String.format(CommandConstants.CMD_UNRAR_EXTRACT, fullPath);
+                            else if (name.endsWith(".7z")) cmd = String.format(CommandConstants.CMD_7Z_EXTRACT, fullPath);
                              
                              if (!cmd.isEmpty()) {
-                                 sshNative.exec(sshHandle, "cd " + escapePath(currentPath) + " && " + cmd);
+                                sshNative.exec(sshHandle, String.format(CommandConstants.CMD_CD_AND, escapePath(currentPath), cmd));
                              }
                          }
                          runOnUiThread(() -> {
@@ -335,6 +339,19 @@ public class SftpActivity extends AppCompatActivity {
         keyPath = getIntent().getStringExtra("key_path");
 
         sshNative = new SshNative();
+        
+        long sessionId = getIntent().getLongExtra("session_id", -1);
+        if (sessionId != -1) {
+            TerminalSession session = SessionManager.getInstance().getTerminalSession(sessionId);
+            if (session != null) {
+                long handle = session.getHandle();
+                if (handle != 0) {
+                    this.sshHandle = handle;
+                    this.isSharedSession = true;
+                }
+            }
+        }
+
         loadFiles(currentPath);
         
         transferReceiver = new BroadcastReceiver() {
@@ -664,7 +681,7 @@ public class SftpActivity extends AppCompatActivity {
                     return;
                 }
 
-                String cmd = "cat \"" + fullPath + "\" | base64";
+                String cmd = String.format(CommandConstants.CMD_CAT_BASE64, fullPath);
                 String base64Content = sshNative.exec(sshHandle, cmd);
 
                 byte[] content = Base64.decode(base64Content.replace("\n", ""), Base64.NO_WRAP);
@@ -717,7 +734,7 @@ public class SftpActivity extends AppCompatActivity {
                 String fullPath = getFullPath(file.name);
                 File localFile = new File(getCacheDir(), file.name);
                 
-                String cmd = "cat \"" + fullPath + "\" | base64";
+                String cmd = String.format(CommandConstants.CMD_CAT_BASE64, fullPath);
                 String base64Content = sshNative.exec(sshHandle, cmd);
                 
                 if (file.size > 1024 * 1024) {
@@ -819,8 +836,8 @@ public class SftpActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
             .setTitle(getString(R.string.action_edit))
             .setMessage(getString(R.string.msg_reload_restart_prompt, label))
-            .setPositiveButton(getString(R.string.action_reload), (d, w) -> executeSimpleCommand("reload"))
-            .setNegativeButton(getString(R.string.action_restart), (d, w) -> executeSimpleCommand("restart"))
+            .setPositiveButton(getString(R.string.action_reload), (d, w) -> executeSimpleCommand(CommandConstants.CMD_RELOAD))
+            .setNegativeButton(getString(R.string.action_restart), (d, w) -> executeSimpleCommand(CommandConstants.CMD_RESTART))
             .setNeutralButton(getString(R.string.action_cancel), null)
             .show();
     }
@@ -846,7 +863,7 @@ public class SftpActivity extends AppCompatActivity {
         intent.putExtra("password", password);
         intent.putExtra("auth_type", authType);
         intent.putExtra("key_path", keyPath);
-        intent.putExtra("initial_command", "cd " + escapePath(targetPath));
+        intent.putExtra("initial_command", String.format(CommandConstants.CMD_CD, escapePath(targetPath)));
         startActivity(intent);
     }
 
@@ -981,12 +998,12 @@ public class SftpActivity extends AppCompatActivity {
 
     private void createFolder(String name) {
         String fullPath = getFullPath(name);
-        performCommand("mkdir -p \"" + fullPath + "\"", getString(R.string.msg_folder_created));
+        performCommand(String.format(CommandConstants.CMD_MKDIR_P_QUOTED, fullPath), getString(R.string.msg_folder_created));
     }
 
     private void createFile(String name) {
         String fullPath = getFullPath(name);
-        performCommand("touch \"" + fullPath + "\"", getString(R.string.msg_file_created));
+        performCommand(String.format(CommandConstants.CMD_TOUCH_QUOTED, fullPath), getString(R.string.msg_file_created));
     }
 
     private void openFilePicker() {
@@ -1055,13 +1072,13 @@ public class SftpActivity extends AppCompatActivity {
                 String target = input.getText().toString();
                 String command = "";
                 if (ext.equals("zip")) {
-                    command = "unzip -o \"" + fullPath + "\" -d \"" + target + "\"";
+                    command = String.format(CommandConstants.CMD_UNZIP_TO, fullPath, target);
                 } else if (ext.equals("tar") || ext.equals("gz") || ext.equals("tgz")) {
-                    command = "tar -xzf \"" + fullPath + "\" -C \"" + target + "\"";
+                    command = String.format(CommandConstants.CMD_TAR_GZ_TO, fullPath, target);
                 } else if (ext.equals("rar")) {
-                    command = "unrar x -y \"" + fullPath + "\" \"" + target + "\"";
+                    command = String.format(CommandConstants.CMD_UNRAR_TO, fullPath, target);
                 } else if (ext.equals("7z")) {
-                    command = "7z x -y \"" + fullPath + "\" -o\"" + target + "\"";
+                    command = String.format(CommandConstants.CMD_7Z_TO, fullPath, target);
                 }
                 
                 if (!command.isEmpty()) {
@@ -1094,7 +1111,7 @@ public class SftpActivity extends AppCompatActivity {
                     folderName = "folder_" + System.currentTimeMillis();
                 }
                 String remoteBase = getFullPath(folderName);
-                sshNative.exec(sshHandle, "mkdir -p \"" + remoteBase + "\"");
+                sshNative.exec(sshHandle, String.format(CommandConstants.CMD_MKDIR_P_QUOTED, remoteBase));
                 List<UploadItem> items = new ArrayList<>();
                 collectUploadItems(root, remoteBase, items);
                 int finalCount = items.size();
@@ -1122,7 +1139,7 @@ public class SftpActivity extends AppCompatActivity {
             }
             if (child.isDirectory()) {
                 String childRemote = remoteDir + "/" + name;
-                sshNative.exec(sshHandle, "mkdir -p \"" + childRemote + "\"");
+                sshNative.exec(sshHandle, String.format(CommandConstants.CMD_MKDIR_P_QUOTED, childRemote));
                 collectUploadItems(child, childRemote, items);
             } else {
                 String childRemote = remoteDir + "/" + name;
@@ -1168,7 +1185,7 @@ public class SftpActivity extends AppCompatActivity {
     private void renameFile(SftpFile file, String newName) {
         String oldPath = getFullPath(file.name);
         String newPath = getFullPath(newName);
-        performCommand("mv \"" + oldPath + "\" \"" + newPath + "\"", getString(R.string.msg_rename_success));
+        performCommand(String.format(CommandConstants.CMD_MV_QUOTED, oldPath, newPath), getString(R.string.msg_rename_success));
     }
 
     private void showDeleteConfirmDialog(SftpFile file) {
@@ -1182,7 +1199,7 @@ public class SftpActivity extends AppCompatActivity {
 
     private void deleteFile(SftpFile file) {
         String fullPath = getFullPath(file.name);
-        String cmd = "rm -rf \"" + fullPath + "\"";
+        String cmd = String.format(CommandConstants.CMD_RM_RF_QUOTED, fullPath);
         performCommand(cmd, getString(R.string.msg_delete_success));
     }
 
@@ -1220,9 +1237,9 @@ public class SftpActivity extends AppCompatActivity {
                 for (String src : sources) {
                     String cmd;
                     if (cut) {
-                        cmd = "mv " + escapePath(src) + " " + escapePath(targetDir);
+                        cmd = String.format(CommandConstants.CMD_MV, escapePath(src), escapePath(targetDir));
                     } else {
-                        cmd = "cp -r " + escapePath(src) + " " + escapePath(targetDir);
+                        cmd = String.format(CommandConstants.CMD_CP_R, escapePath(src), escapePath(targetDir));
                     }
                     sshNative.exec(sshHandle, cmd);
                 }
@@ -1252,7 +1269,7 @@ public class SftpActivity extends AppCompatActivity {
             .setPositiveButton(R.string.action_delete, (d, w) -> {
                 executor.execute(() -> {
                     try {
-                        StringBuilder cmd = new StringBuilder("rm -rf");
+                        StringBuilder cmd = new StringBuilder(CommandConstants.CMD_RM_RF_PREFIX);
                         for (SftpFile f : selected) {
                             String path = (currentPath.endsWith("/") ? currentPath : currentPath + "/") + f.name;
                             cmd.append(" ").append(escapePath(path));
@@ -1284,7 +1301,7 @@ public class SftpActivity extends AppCompatActivity {
                 
                 executor.execute(() -> {
                     try {
-                        StringBuilder cmd = new StringBuilder("cd " + escapePath(currentPath) + " && tar -czf " + escapePath(name));
+                        StringBuilder cmd = new StringBuilder(String.format(CommandConstants.CMD_TAR_COMPRESS, escapePath(currentPath), escapePath(name)));
                         for (SftpFile f : selected) {
                             cmd.append(" ").append(escapePath(f.name));
                         }
@@ -1324,6 +1341,10 @@ public class SftpActivity extends AppCompatActivity {
             }
         }
     }
+    
+    private boolean isValidSftpResponse(String response) {
+        return response != null && response.trim().startsWith("[");
+    }
 
     private void loadFiles(String path) {
         if (!swipeRefresh.isRefreshing()) progressBar.setVisibility(View.VISIBLE);
@@ -1333,6 +1354,15 @@ public class SftpActivity extends AppCompatActivity {
                 ensureConnected();
                 
                 String response = sshNative.sftpList(sshHandle, path);
+                if (!isValidSftpResponse(response) && isSharedSession) {
+                    isSharedSession = false;
+                    sshHandle = 0;
+                    ensureConnected();
+                    response = sshNative.sftpList(sshHandle, path);
+                }
+                if (!isValidSftpResponse(response)) {
+                    throw new Exception("SFTP list failed");
+                }
                 
                 List<SftpFile> list = new ArrayList<>();
                 if (response != null && !response.isEmpty()) {
@@ -1400,7 +1430,7 @@ public class SftpActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         new Thread(() -> {
-            if (sshHandle != 0) {
+            if (sshHandle != 0 && !isSharedSession) {
                 sshNative.disconnect(sshHandle);
                 sshHandle = 0;
             }

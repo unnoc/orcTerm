@@ -4,21 +4,21 @@
     <item
         android:id="@+id/nav_servers"
         android:icon="@drawable/ic_action_computer"
-        android:title="服务器"
+        android:title="@string/nav_servers_title"
         app:showAsAction="always" />
     <item
         android:id="@+id/nav_terminal"
         android:icon="@drawable/ic_action_terminal"
-        android:title="终端"
+        android:title="@string/nav_terminal_title"
         app:showAsAction="always" />
     <item
         android:id="@+id/nav_files"
         android:icon="@drawable/ic_action_folder"
-        android:title="文件"
+        android:title="@string/nav_files_title"
         app:showAsAction="always" />
     <item
         android:id="@+id/nav_profile"
         android:icon="@drawable/ic_action_settings"
-        android:title="设置"
+        android:title="@string/nav_settings_title"
         app:showAsAction="always" />
 </menu>

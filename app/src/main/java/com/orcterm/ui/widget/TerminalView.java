@@ -8,6 +8,9 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
+import android.view.GestureDetector;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 
 import com.orcterm.core.terminal.TerminalEmulator;
@@ -34,6 +37,31 @@ public class TerminalView extends View {
     private Bitmap backgroundImage;
     private int backgroundAlpha = 255;
     private Paint backgroundImagePaint;
+    private GestureDetector gestureDetector;
+    private OnTerminalGestureListener gestureListener;
+    private Paint selectionPaint;
+    private Paint lineNumberPaint;
+    private Paint bracketMatchPaint;
+    private Paint highRiskPaint;
+    private boolean selectionActive;
+    private int selectionStartRow;
+    private int selectionStartCol;
+    private int selectionEndRow;
+    private int selectionEndCol;
+    private int activePointerCount;
+    private int lastRequestedCol = -1;
+    private int lastRequestedRow = -1;
+    private boolean threeFingerActive;
+    private boolean threeFingerTriggered;
+    private float threeFingerStartX;
+    private int threeFingerThresholdPx;
+    private boolean showLineNumbers;
+    private boolean showBracketMatch;
+    private boolean showHighRiskHighlight;
+    private int lineNumberColor = 0xFF888888;
+    private int bracketMatchColor = 0x66FFD54F;
+    private int highRiskHighlightColor = 0x55FF5252;
+    private String pendingPreviewContent;
 
     // ANSI color table (0-15 for 16-color, 16-255 for 256-color)
     private int[] colors = new int[256];
@@ -83,8 +111,21 @@ public class TerminalView extends View {
 
     private OnResizeListener resizeListener;
 
+    public interface OnTerminalGestureListener {
+        void onDoubleTap();
+        void onThreeFingerSwipe(int direction);
+        void onCursorMoveRequest(int column, int row);
+        void onTerminalTap(float x, float y);
+        void onTerminalLongPress(float x, float y);
+        void onTerminalKeyDown(int keyCode, KeyEvent event);
+    }
+
     public void setOnResizeListener(OnResizeListener listener) {
         this.resizeListener = listener;
+    }
+
+    public void setOnTerminalGestureListener(OnTerminalGestureListener listener) {
+        this.gestureListener = listener;
     }
 
     /**
@@ -96,6 +137,9 @@ public class TerminalView extends View {
         if (this.fontSize != sizePx) {
             this.fontSize = sizePx;
             textPaint.setTextSize(fontSize);
+            if (lineNumberPaint != null) {
+                lineNumberPaint.setTextSize(textPaint.getTextSize());
+            }
             updateMetrics();
             
             // Trigger resize
@@ -130,6 +174,9 @@ public class TerminalView extends View {
     public void setTypeface(Typeface typeface) {
         if (typeface != null) {
             textPaint.setTypeface(typeface);
+            if (lineNumberPaint != null) {
+                lineNumberPaint.setTypeface(typeface);
+            }
             updateMetrics();
             postInvalidate();
         }
@@ -146,6 +193,9 @@ public class TerminalView extends View {
     public void setLetterSpacing(float spacing) {
         this.letterSpacing = spacing;
         textPaint.setLetterSpacing(letterSpacing);
+        if (lineNumberPaint != null) {
+            lineNumberPaint.setLetterSpacing(letterSpacing);
+        }
         updateMetrics();
         postInvalidate();
     }
@@ -188,6 +238,131 @@ public class TerminalView extends View {
         this.searchQuery = null;
         postInvalidate();
     }
+    
+    public void scrollToFirstMatch(String query) {
+        if (query == null || query.isEmpty() || emulator == null) return;
+        
+        // 该功能需要终端模拟器支持滚动到指定内容
+        // 目前的实现仅作为占位符
+        // TODO: 实现滚动到第一个匹配项的功能
+    }
+    
+    public int getMatchCount(String query) {
+        if (query == null || query.isEmpty() || emulator == null) return 0;
+        
+        TerminalEmulator.ScreenBuffer buffer = emulator.getScreenBuffer();
+        if (buffer == null) return 0;
+        
+        int rows = buffer.getRowCount();
+        int cols = buffer.getColumnCount();
+        String lowerQuery = query.toLowerCase(java.util.Locale.getDefault());
+        int count = 0;
+        
+        for (int row = 0; row < rows; row++) {
+            StringBuilder lineBuilder = new StringBuilder(cols);
+            for (int col = 0; col < cols; col++) {
+                char c = buffer.getChar(row, col);
+                if (c == 0) c = ' '; // 空字符显示为空格
+                lineBuilder.append(c);
+            }
+            String line = lineBuilder.toString();
+            String lowerLine = line.toLowerCase(java.util.Locale.getDefault());
+            
+            int startIndex = 0;
+            while (startIndex < line.length()) {
+                int matchIndex = lowerLine.indexOf(lowerQuery, startIndex);
+                if (matchIndex == -1) break; // 没有找到更多匹配项
+                count++;
+                startIndex = matchIndex + 1; // 移动到下一个可能的匹配位置
+            }
+        }
+        
+        return count;
+    }
+
+    public void setSelectionColor(int color) {
+        if (selectionPaint != null) {
+            selectionPaint.setColor(color);
+            postInvalidate();
+        }
+    }
+
+    public void setSearchHighlightColor(int color) {
+        this.searchHighlightColor = color;
+        postInvalidate();
+    }
+
+    public void setShowLineNumbers(boolean show) {
+        this.showLineNumbers = show;
+        postInvalidate();
+    }
+
+    public void setLineNumberColor(int color) {
+        this.lineNumberColor = color;
+        if (lineNumberPaint != null) {
+            lineNumberPaint.setColor(color);
+        }
+        postInvalidate();
+    }
+
+    public void setShowBracketMatch(boolean show) {
+        this.showBracketMatch = show;
+        postInvalidate();
+    }
+
+    public void setBracketMatchColor(int color) {
+        this.bracketMatchColor = color;
+        if (bracketMatchPaint != null) {
+            bracketMatchPaint.setColor(color);
+        }
+        postInvalidate();
+    }
+
+    public void setShowHighRiskHighlight(boolean show) {
+        this.showHighRiskHighlight = show;
+        postInvalidate();
+    }
+
+    public void setHighRiskHighlightColor(int color) {
+        this.highRiskHighlightColor = color;
+        if (highRiskPaint != null) {
+            highRiskPaint.setColor(color);
+        }
+        postInvalidate();
+    }
+
+    public void setPreviewContent(String content) {
+        pendingPreviewContent = content;
+        if (content == null) return;
+        if (getWidth() > 0 && getHeight() > 0) {
+            applyPreviewContent(content);
+        }
+    }
+    
+    public String getTerminalContent() {
+        if (emulator == null) return "";
+        
+        TerminalEmulator.ScreenBuffer buffer = emulator.getScreenBuffer();
+        if (buffer == null) return "";
+        
+        int rows = buffer.getRowCount();
+        StringBuilder content = new StringBuilder();
+        
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < buffer.getColumnCount(); col++) {
+                char c = buffer.getChar(row, col);
+                if (c != 0) { // 只添加非空字符
+                    content.append(c);
+                }
+            }
+            // 在每行末尾添加换行符（除非是最后一行）
+            if (row < rows - 1) {
+                content.append('\n');
+            }
+        }
+        
+        return content.toString();
+    }
 
     public TerminalView(Context context) {
         super(context);
@@ -212,14 +387,78 @@ public class TerminalView extends View {
         cursorPaint.setColor(cursorColor);
         cursorPaint.setAlpha(128); // Semi-transparent block
         backgroundImagePaint = new Paint();
+        selectionPaint = new Paint();
+        selectionPaint.setColor(0x5533B5E5);
+        lineNumberPaint = new Paint(textPaint);
+        lineNumberPaint.setColor(lineNumberColor);
+        bracketMatchPaint = new Paint();
+        bracketMatchPaint.setColor(bracketMatchColor);
+        highRiskPaint = new Paint();
+        highRiskPaint.setColor(highRiskHighlightColor);
 
         initColors();
 
         updateMetrics();
 
-        emulator = new TerminalEmulator(80, 24);
-
         setBackgroundColor(colors[0]);
+        setClickable(true);
+        threeFingerThresholdPx = dpToPx(80);
+        
+        // 创建一个自定义的GestureDetector来处理长按事件
+        gestureDetector = new GestureDetector(getContext(), new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                clearSelection();
+                if (gestureListener != null) {
+                    gestureListener.onTerminalTap(e.getX(), e.getY());
+                }
+                performClick();
+                return true;
+            }
+
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                if (gestureListener != null) {
+                    gestureListener.onDoubleTap();
+                }
+                return true;
+            }
+
+            @Override
+            public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
+                if (activePointerCount == 1 && !selectionActive) {
+                    return true;
+                }
+                return false;
+            }
+            
+            @Override
+            public void onLongPress(MotionEvent e) {
+                if (gestureListener != null) {
+                    gestureListener.onTerminalLongPress(e.getX(), e.getY());
+                }
+            }
+        });
+        
+        // 设置长按检测
+        gestureDetector.setIsLongpressEnabled(true);
+    }
+
+    public void attachEmulator(TerminalEmulator emulator) {
+        this.emulator = emulator;
+        if (getWidth() > 0 && getHeight() > 0) {
+            int cols = (int) (getWidth() / charWidth);
+            int rows = (int) (getHeight() / charHeight);
+            if (cols > 0 && rows > 0) {
+                this.emulator.resize(cols, rows);
+            }
+        }
+        postInvalidate();
     }
 
     @Override
@@ -234,6 +473,9 @@ public class TerminalView extends View {
                 if (resizeListener != null) resizeListener.onResize(cols, rows);
             }
         }
+        if (pendingPreviewContent != null && w > 0 && h > 0) {
+            applyPreviewContent(pendingPreviewContent);
+        }
     }
 
     public void append(String data) {
@@ -241,6 +483,14 @@ public class TerminalView extends View {
             emulator.write(data);
             invalidateDirtyRegion();
         }
+    }
+
+    /**
+     * Notify view that screen content has been updated externally
+     * (e.g. by TerminalSession writing directly to emulator)
+     */
+    public void notifyScreenUpdate() {
+        invalidateDirtyRegion();
     }
 
     @Override
@@ -257,6 +507,9 @@ public class TerminalView extends View {
         // Draw terminal content
         drawTerminalContent(canvas);
 
+        // Draw selection
+        drawSelection(canvas);
+
         // Draw search highlights
         if (searchQuery != null && !searchQuery.isEmpty()) {
             drawSearchHighlights(canvas);
@@ -264,6 +517,33 @@ public class TerminalView extends View {
 
         // Draw cursor
         drawCursor(canvas);
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        // 检测长按事件
+        if (gestureDetector != null) {
+            gestureDetector.onTouchEvent(event);
+        }
+        
+        activePointerCount = event.getPointerCount();
+        int action = event.getActionMasked();
+        
+        if (activePointerCount == 2) {
+            handleTwoFingerSelection(event, action);
+            return true;
+        }
+        if (activePointerCount == 3) {
+            handleThreeFingerSwipe(event, action);
+            return true;
+        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            lastRequestedCol = -1;
+            lastRequestedRow = -1;
+            threeFingerActive = false;
+            threeFingerTriggered = false;
+        }
+        return true;
     }
 
     /**
@@ -355,10 +635,23 @@ public class TerminalView extends View {
         int rows = buffer.getRowCount();
         int cols = buffer.getColumnCount();
 
-        float y = 0;
+        int digits = showLineNumbers ? String.valueOf(rows).length() : 0;
+        float lineNumberWidth = showLineNumbers ? (digits + 1) * charWidth : 0f;
 
         for (int row = 0; row < rows; row++) {
-            float x = 0;
+            float y = row * charHeight;
+            float xOffset = lineNumberWidth;
+            float baseline = y + charHeight - (charHeight * 0.2f);
+            if (showLineNumbers) {
+                lineNumberPaint.setColor(lineNumberColor);
+                String num = String.format(java.util.Locale.getDefault(), "%" + digits + "d", row + 1);
+                canvas.drawText(num, 0, num.length(), 0, baseline, lineNumberPaint);
+            }
+            if (showHighRiskHighlight && isHighRiskLine(buffer, row, cols)) {
+                highRiskPaint.setColor(highRiskHighlightColor);
+                canvas.drawRect(xOffset, y, xOffset + cols * charWidth, y + charHeight, highRiskPaint);
+            }
+            float x = xOffset;
             
             for (int col = 0; col < cols; col++) {
                 char c = buffer.getChar(row, col);
@@ -381,6 +674,11 @@ public class TerminalView extends View {
                     bgPaint.setColor(actualBgColor);
                     canvas.drawRect(x, y, x + charWidth, y + charHeight, bgPaint);
                 }
+
+                if (showBracketMatch && isBracket(c)) {
+                    bracketMatchPaint.setColor(bracketMatchColor);
+                    canvas.drawRect(x, y, x + charWidth, y + charHeight, bracketMatchPaint);
+                }
                 
                 // Only draw text for non-space characters
                 if (c != ' ' && c != 0) {
@@ -392,14 +690,67 @@ public class TerminalView extends View {
                     Paint cachedPaint = getCachedPaint(actualFgColor);
                     charArray[0] = c;
                     // Adjust text position for proper baseline alignment
-                    float textY = y + charHeight - (charHeight * 0.2f); // Better baseline positioning
-                    canvas.drawText(charArray, 0, 1, x, textY, cachedPaint);
+                    canvas.drawText(charArray, 0, 1, x, baseline, cachedPaint);
                 }
                 
                 x += charWidth;
             }
-            
-            y += charHeight;
+        }
+    }
+
+    private void drawSelection(Canvas canvas) {
+        if (!selectionActive || emulator == null) {
+            return;
+        }
+        int rows = emulator.getRows();
+        int cols = emulator.getColumns();
+        if (rows <= 0 || cols <= 0) return;
+        float xOffset = getLineNumberOffset(rows);
+        boolean forward = selectionStartRow < selectionEndRow
+            || (selectionStartRow == selectionEndRow && selectionStartCol <= selectionEndCol);
+        int startRow = Math.max(0, Math.min(rows - 1, selectionStartRow));
+        int endRow = Math.max(0, Math.min(rows - 1, selectionEndRow));
+        int minRow = Math.min(startRow, endRow);
+        int maxRow = Math.max(startRow, endRow);
+        for (int row = minRow; row <= maxRow; row++) {
+            int startCol;
+            int endCol;
+            if (forward) {
+                if (row == selectionStartRow && row == selectionEndRow) {
+                    startCol = Math.min(selectionStartCol, selectionEndCol);
+                    endCol = Math.max(selectionStartCol, selectionEndCol);
+                } else if (row == selectionStartRow) {
+                    startCol = selectionStartCol;
+                    endCol = cols - 1;
+                } else if (row == selectionEndRow) {
+                    startCol = 0;
+                    endCol = selectionEndCol;
+                } else {
+                    startCol = 0;
+                    endCol = cols - 1;
+                }
+            } else {
+                if (row == selectionStartRow && row == selectionEndRow) {
+                    startCol = Math.min(selectionStartCol, selectionEndCol);
+                    endCol = Math.max(selectionStartCol, selectionEndCol);
+                } else if (row == selectionEndRow) {
+                    startCol = selectionEndCol;
+                    endCol = cols - 1;
+                } else if (row == selectionStartRow) {
+                    startCol = 0;
+                    endCol = selectionStartCol;
+                } else {
+                    startCol = 0;
+                    endCol = cols - 1;
+                }
+            }
+            startCol = Math.max(0, Math.min(cols - 1, startCol));
+            endCol = Math.max(0, Math.min(cols - 1, endCol));
+            float left = xOffset + startCol * charWidth;
+            float top = row * charHeight;
+            float right = xOffset + (endCol + 1) * charWidth;
+            float bottom = top + charHeight;
+            canvas.drawRect(left, top, right, bottom, selectionPaint);
         }
     }
 
@@ -407,12 +758,49 @@ public class TerminalView extends View {
      * Draw search highlights
      */
     private void drawSearchHighlights(Canvas canvas) {
-        if (searchQuery == null || searchQuery.isEmpty()) {
+        if (searchQuery == null || searchQuery.isEmpty() || emulator == null) {
             return;
         }
-
-        // Implementation would highlight search matches
-        // This is a placeholder for search highlighting functionality
+        
+        TerminalEmulator.ScreenBuffer buffer = emulator.getScreenBuffer();
+        if (buffer == null) return;
+        
+        int rows = buffer.getRowCount();
+        int cols = buffer.getColumnCount();
+        String lowerSearch = searchQuery.toLowerCase(java.util.Locale.getDefault());
+        float xOffset = getLineNumberOffset(rows);
+        
+        for (int row = 0; row < rows; row++) {
+            // 获取整行文本
+            StringBuilder lineBuilder = new StringBuilder(cols);
+            for (int col = 0; col < cols; col++) {
+                char c = buffer.getChar(row, col);
+                if (c == 0) c = ' '; // 空字符显示为空格
+                lineBuilder.append(c);
+            }
+            String line = lineBuilder.toString();
+            String lowerLine = line.toLowerCase(java.util.Locale.getDefault());
+            
+            int startIndex = 0;
+            while (startIndex < line.length()) {
+                int matchIndex = lowerLine.indexOf(lowerSearch, startIndex);
+                if (matchIndex == -1) break; // 没有找到更多匹配项
+                
+                // 计算匹配区域的坐标
+                float left = xOffset + matchIndex * charWidth;
+                float top = row * charHeight;
+                float right = left + searchQuery.length() * charWidth;
+                float bottom = top + charHeight;
+                
+                // 绘制搜索高亮
+                Paint highlightPaint = new Paint();
+                highlightPaint.setColor(searchHighlightColor);
+                highlightPaint.setStyle(Paint.Style.FILL);
+                canvas.drawRect(left, top, right, bottom, highlightPaint);
+                
+                startIndex = matchIndex + 1; // 移动到下一个可能的匹配位置
+            }
+        }
     }
 
     /**
@@ -429,7 +817,7 @@ public class TerminalView extends View {
             }
         }
 
-        float cursorX = emulator.getCursorX() * charWidth;
+        float cursorX = getLineNumberOffset(emulator.getRows()) + emulator.getCursorX() * charWidth;
         float cursorY = emulator.getCursorY() * charHeight;
 
         cursorPaint.setColor(cursorColor);
@@ -572,6 +960,122 @@ public class TerminalView extends View {
         return colors[7]; // Default to white (color 7) if index is invalid
     }
 
+    private void applyPreviewContent(String content) {
+        int cols = Math.max(10, (int) (getWidth() / charWidth));
+        int rows = Math.max(5, (int) (getHeight() / charHeight));
+        emulator = new TerminalEmulator(cols, rows);
+        emulator.write(content);
+        invalidate();
+    }
+
+    private boolean isBracket(char c) {
+        return c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}';
+    }
+
+    private boolean isHighRiskLine(TerminalEmulator.ScreenBuffer buffer, int row, int cols) {
+        StringBuilder sb = new StringBuilder(cols);
+        for (int col = 0; col < cols; col++) {
+            char c = buffer.getChar(row, col);
+            if (c == 0) c = ' ';
+            sb.append(c);
+        }
+        String line = sb.toString().trim().toLowerCase(java.util.Locale.getDefault());
+        if (line.isEmpty()) return false;
+        return line.contains("rm -rf")
+            || line.contains("mkfs")
+            || line.contains("dd if=")
+            || line.contains(":(){:|:&};:");
+    }
+
+    private void handleTwoFingerSelection(MotionEvent event, int action) {
+        if (event.getPointerCount() < 2) {
+            return;
+        }
+        float midX = (event.getX(0) + event.getX(1)) / 2f;
+        float midY = (event.getY(0) + event.getY(1)) / 2f;
+        int col = pointToColumn(midX);
+        int row = pointToRow(midY);
+        if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_DOWN) {
+            selectionActive = true;
+            selectionStartCol = col;
+            selectionStartRow = row;
+            selectionEndCol = col;
+            selectionEndRow = row;
+            invalidate();
+            return;
+        }
+        if (action == MotionEvent.ACTION_MOVE && selectionActive) {
+            selectionEndCol = col;
+            selectionEndRow = row;
+            invalidate();
+        }
+    }
+
+    private void handleThreeFingerSwipe(MotionEvent event, int action) {
+        if (event.getPointerCount() < 3) {
+            return;
+        }
+        float avgX = (event.getX(0) + event.getX(1) + event.getX(2)) / 3f;
+        if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_DOWN) {
+            threeFingerActive = true;
+            threeFingerTriggered = false;
+            threeFingerStartX = avgX;
+            return;
+        }
+        if (action == MotionEvent.ACTION_MOVE && threeFingerActive && !threeFingerTriggered) {
+            float dx = avgX - threeFingerStartX;
+            if (Math.abs(dx) >= threeFingerThresholdPx) {
+                threeFingerTriggered = true;
+                if (gestureListener != null) {
+                    gestureListener.onThreeFingerSwipe(dx > 0 ? 1 : -1);
+                }
+            }
+        }
+    }
+
+    private void requestCursorMove(float x, float y) {
+        int col = pointToColumn(x);
+        int row = pointToRow(y);
+        if (col == lastRequestedCol && row == lastRequestedRow) {
+            return;
+        }
+        lastRequestedCol = col;
+        lastRequestedRow = row;
+        if (gestureListener != null) {
+            gestureListener.onCursorMoveRequest(col, row);
+        }
+    }
+
+    private int pointToColumn(float x) {
+        if (emulator == null || charWidth <= 0) return 0;
+        float offset = getLineNumberOffset(emulator.getRows());
+        int col = (int) ((x - offset) / charWidth);
+        return Math.max(0, Math.min(emulator.getColumns() - 1, col));
+    }
+
+    private int pointToRow(float y) {
+        if (emulator == null || charHeight <= 0) return 0;
+        int row = (int) (y / charHeight);
+        return Math.max(0, Math.min(emulator.getRows() - 1, row));
+    }
+
+    private float getLineNumberOffset(int rows) {
+        if (!showLineNumbers || rows <= 0) return 0f;
+        int digits = String.valueOf(rows).length();
+        return (digits + 1) * charWidth;
+    }
+
+    private void clearSelection() {
+        if (selectionActive) {
+            selectionActive = false;
+            invalidate();
+        }
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
+    }
+
     // Getters and setters for public properties
     public TerminalEmulator getEmulator() {
         return emulator;
@@ -613,5 +1117,18 @@ public class TerminalView extends View {
 
     public Bitmap getBackgroundImage() {
         return backgroundImage;
+    }
+    
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (gestureListener != null) {
+            gestureListener.onTerminalKeyDown(keyCode, event);
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+    
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        return super.onKeyUp(keyCode, event);
     }
 }

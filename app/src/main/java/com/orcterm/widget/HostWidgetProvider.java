@@ -13,6 +13,9 @@ import com.orcterm.R;
 import com.orcterm.ui.AddHostActivity;
 import com.orcterm.ui.TerminalActivity;
 
+/**
+ * 主机桌面小部件 Provider
+ */
 public class HostWidgetProvider extends AppWidgetProvider {
 
     public static final String ACTION_REFRESH = "com.orcterm.widget.ACTION_REFRESH";

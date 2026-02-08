@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat;
 
 import com.orcterm.R;
 import com.orcterm.core.ssh.SshNative;
+import com.orcterm.util.CommandConstants;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -26,6 +27,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * SFTP 上传/下载后台服务
+ */
 public class SftpTransferService extends Service {
 
     public static final String ACTION_ENQUEUE = "com.orcterm.action.SFTP_TRANSFER_ENQUEUE";
@@ -279,7 +283,7 @@ public class SftpTransferService extends Service {
                 int chunk = (total > 0) ? (int) Math.min(TRANSFER_BLOCK_SIZE, total - pos) : TRANSFER_BLOCK_SIZE;
                 if (total > 0 && chunk <= 0) break;
                 long skipBlocks = pos / TRANSFER_BLOCK_SIZE;
-                String cmd = "dd if=" + escapePath(task.remotePath) + " bs=" + TRANSFER_BLOCK_SIZE + " skip=" + skipBlocks + " count=1 status=none | base64";
+                String cmd = String.format(CommandConstants.CMD_DD_BASE64, escapePath(task.remotePath), TRANSFER_BLOCK_SIZE, skipBlocks);
                 String base64Content = sshNative.exec(handle, cmd);
                 if (base64Content == null) base64Content = "";
                 byte[] content = Base64.decode(base64Content.replace("\n", ""), Base64.NO_WRAP);
@@ -300,7 +304,7 @@ public class SftpTransferService extends Service {
         SshNative sshNative = new SshNative();
         long handle = connect(task, sshNative);
         checkTransferCanceled(task);
-        sshNative.exec(handle, "> " + escapePath(task.remotePath));
+        sshNative.exec(handle, String.format(CommandConstants.CMD_TRUNCATE, escapePath(task.remotePath)));
         try (InputStream is = getContentResolver().openInputStream(task.uri)) {
             if (is == null) throw new IllegalStateException("InputStream is null");
             byte[] buffer = new byte[16384];
@@ -311,7 +315,7 @@ public class SftpTransferService extends Service {
                 byte[] chunk = new byte[bytesRead];
                 System.arraycopy(buffer, 0, chunk, 0, bytesRead);
                 String base64 = Base64.encodeToString(chunk, Base64.NO_WRAP);
-                String cmd = "echo \"" + base64 + "\" | base64 -d >> " + escapePath(task.remotePath);
+                String cmd = String.format(CommandConstants.CMD_ECHO_BASE64_APPEND, base64, escapePath(task.remotePath));
                 sshNative.exec(handle, cmd);
                 sent += bytesRead;
                 updateTransferUI(task, sent, Math.max(task.totalBytes, 0));
@@ -325,7 +329,7 @@ public class SftpTransferService extends Service {
         SshNative sshNative = new SshNative();
         long handle = connect(task, sshNative);
         checkTransferCanceled(task);
-        sshNative.exec(handle, "> " + escapePath(task.remotePath));
+        sshNative.exec(handle, String.format(CommandConstants.CMD_TRUNCATE, escapePath(task.remotePath)));
         try (InputStream is = new java.io.FileInputStream(task.localFile)) {
             byte[] buffer = new byte[16384];
             long sent = 0;
@@ -335,7 +339,7 @@ public class SftpTransferService extends Service {
                 byte[] chunk = new byte[bytesRead];
                 System.arraycopy(buffer, 0, chunk, 0, bytesRead);
                 String base64 = Base64.encodeToString(chunk, Base64.NO_WRAP);
-                String cmd = "echo \"" + base64 + "\" | base64 -d >> " + escapePath(task.remotePath);
+                String cmd = String.format(CommandConstants.CMD_ECHO_BASE64_APPEND, base64, escapePath(task.remotePath));
                 sshNative.exec(handle, cmd);
                 sent += bytesRead;
                 updateTransferUI(task, sent, Math.max(task.totalBytes, 0));

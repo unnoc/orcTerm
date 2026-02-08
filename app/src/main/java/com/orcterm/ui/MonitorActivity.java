@@ -34,6 +34,7 @@ import com.orcterm.R;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.data.AppDatabase;
 import com.orcterm.data.HostEntity;
+import com.orcterm.util.CommandConstants;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -43,6 +44,9 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * 主机监控界面
+ */
 public class MonitorActivity extends AppCompatActivity {
 
     private LineChart chartNetwork;
@@ -277,8 +281,7 @@ public class MonitorActivity extends AppCompatActivity {
     private void fetchStats() {
         try {
             // Updated command to include cleaner lsblk output and robust loadavg
-            String cmd = "echo 'SECTION_LOAD'; cat /proc/loadavg; echo 'SECTION_CPU'; grep 'cpu ' /proc/stat; echo 'SECTION_MEM'; cat /proc/meminfo; echo 'SECTION_NET'; cat /proc/net/dev; echo 'SECTION_DISK_INFO'; lsblk -o NAME,FSTYPE,SIZE,MOUNTPOINT; echo 'SECTION_DISK_USAGE'; df -P -B1; echo 'SECTION_CONN'; ss -Htp 2>/dev/null || true; echo 'SECTION_PROCESS'; ps -eo pid,pcpu,pmem,stat,lstart,comm,args --sort=-pcpu | head -n 20";
-            String output = ssh.exec(sshHandle, cmd);
+            String output = ssh.exec(sshHandle, CommandConstants.CMD_MONITOR_STATS);
             parseStats(output);
         } catch (Exception e) {
             // Log or ignore

@@ -14,6 +14,9 @@ import com.orcterm.core.docker.DockerImage;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 镜像列表适配器
+ */
 public class DockerImageAdapter extends RecyclerView.Adapter<DockerImageAdapter.ViewHolder> {
 
     private List<DockerImage> images = new ArrayList<>();

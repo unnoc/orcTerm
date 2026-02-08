@@ -45,6 +45,27 @@
     <string name="settings_main_general_title">通用</string>
     <string name="settings_main_general_summary">语言、通知与清理</string>
     <string name="settings_main_general_summary_format">语言: %1$s</string>
+    <string name="settings_section_connection">连接与会话</string>
+    <string name="settings_section_terminal_display">终端与外观</string>
+    <string name="settings_section_data">数据与同步</string>
+    <string name="settings_section_general">系统与关于</string>
+    <string name="settings_search_title">设置搜索</string>
+    <string name="settings_search_hint">搜索设置项</string>
+    <string name="settings_search_empty">暂无匹配结果</string>
+    <string name="settings_preview_header">预览</string>
+    <string name="settings_terminal_preview_text">echo "OrcTerm Preview"\n$ ls -la\n$ git status</string>
+    <string name="nav_servers_title">服务器</string>
+    <string name="nav_terminal_title">终端</string>
+    <string name="nav_files_title">文件</string>
+    <string name="nav_settings_title">设置</string>
+    <string name="nav_terminal_with_host">终端 · %1$s</string>
+    <string name="nav_files_with_host">文件 · %1$s</string>
+    <string name="session_empty_terminal">暂无活动会话</string>
+    <string name="session_empty_files">暂无可用于 SFTP 的活动会话</string>
+    <string name="session_status_connected">已连接</string>
+    <string name="session_status_disconnected">已断开</string>
+    <string name="session_host_format">%1$s@%2$s:%3$d</string>
+    <string name="session_host_no_user_format">%1$s:%2$d</string>
 
     <string name="settings_theme_mode_dark">深色</string>
     <string name="settings_theme_mode_light">浅色</string>
@@ -55,10 +76,24 @@
     <string name="settings_theme_display_title">主题与显示</string>
     <string name="settings_general_title">通用</string>
 
+    <string name="settings_ssh_quick_header">快捷入口</string>
+    <string name="settings_ssh_quick_terminal_title">快速终端</string>
+    <string name="settings_ssh_quick_terminal_summary">选择主机后直接进入终端</string>
+    <string name="settings_ssh_quick_sftp_title">快速文件管理</string>
+    <string name="settings_ssh_quick_sftp_summary">选择主机后打开 SFTP</string>
+    <string name="settings_ssh_no_hosts">暂无主机，请先添加</string>
+
     <string name="settings_ssh_hosts_title">主机管理</string>
     <string name="settings_ssh_hosts_summary">查看与编辑主机列表</string>
     <string name="settings_ssh_keys_title">密钥管理</string>
     <string name="settings_ssh_keys_summary">生成/导入/删除 SSH 密钥</string>
+    <string name="settings_ssh_logs_header">连接日志</string>
+    <string name="settings_ssh_logs_title">SSH 连接日志</string>
+    <string name="settings_ssh_logs_summary">查看最近的连接日志</string>
+    <string name="settings_ssh_logs_loading">正在加载日志...</string>
+    <string name="settings_ssh_logs_empty">暂无连接日志</string>
+    <string name="settings_ssh_log_title">日志: %1$s</string>
+    <string name="settings_ssh_log_deleted">日志已删除</string>
     <string name="settings_ssh_key_dir">密钥存储目录: %1$s</string>
     <string name="action_delete_key">删除密钥</string>
     <string name="settings_ssh_key_delete_confirm">确定删除 %1$s 吗？</string>
@@ -66,6 +101,25 @@
     <string name="settings_ssh_key_generate_failed">密钥生成失败</string>
     <string name="settings_ssh_key_imported">已导入: %1$s</string>
     <string name="settings_ssh_key_import_failed">导入失败: %1$s</string>
+    <string name="settings_ssh_config_header">SSH 设置</string>
+    <string name="settings_ssh_connect_timeout_title">连接超时</string>
+    <string name="settings_ssh_connect_timeout_summary">连接超时 %1$d 秒</string>
+    <string name="settings_ssh_read_timeout_title">读取超时</string>
+    <string name="settings_ssh_read_timeout_summary">读取超时 %1$d 秒</string>
+    <string name="settings_ssh_keepalive_interval_title">心跳间隔</string>
+    <string name="settings_ssh_keepalive_interval_summary">心跳间隔 %1$d 秒（0 表示关闭）</string>
+    <string name="settings_ssh_keepalive_reply_title">心跳回包</string>
+    <string name="settings_ssh_keepalive_reply_on">已开启</string>
+    <string name="settings_ssh_keepalive_reply_off">已关闭</string>
+    <string name="settings_ssh_sftp_default_path_title">SFTP 默认目录</string>
+    <string name="settings_ssh_home_header">首页主机</string>
+    <string name="settings_ssh_home_auto_connect_title">自动连接首页主机</string>
+    <string name="settings_ssh_home_auto_connect_summary_on">已启用 · %1$s</string>
+    <string name="settings_ssh_home_auto_connect_summary_off">已关闭</string>
+    <string name="settings_ssh_home_auto_connect_summary_no_host">未设置首页主机</string>
+    <string name="settings_ssh_home_list_auto_fetch_title">主机列表自动获取信息</string>
+    <string name="settings_ssh_home_list_auto_fetch_summary_on">已开启</string>
+    <string name="settings_ssh_home_list_auto_fetch_summary_off">已关闭</string>
 
     <string name="settings_cloud_status_header">云同步状态</string>
     <string name="settings_cloud_server_label">绑定服务器</string>
@@ -91,10 +145,62 @@
     <string name="settings_terminal_font_summary">调整终端字号与字体</string>
     <string name="settings_terminal_theme_title">颜色主题</string>
     <string name="settings_terminal_theme_summary">选择终端配色方案</string>
+    <string name="settings_terminal_theme_manage_header">主题管理</string>
+    <string name="settings_terminal_theme_editor_title">主题编辑器</string>
+    <string name="settings_terminal_theme_editor_summary">编辑 16 色调色板</string>
+    <string name="settings_terminal_theme_import_title">导入主题</string>
+    <string name="settings_terminal_theme_import_summary">从 JSON 或 CSV 导入</string>
+    <string name="settings_terminal_theme_export_title">导出主题</string>
+    <string name="settings_terminal_theme_export_summary">复制 JSON 或 CSV</string>
+    <string name="settings_terminal_theme_preview_title">预览</string>
+    <string name="settings_terminal_theme_preset_title">预设主题</string>
+    <string name="settings_terminal_theme_preset_dark">深色</string>
+    <string name="settings_terminal_theme_preset_light">浅色</string>
+    <string name="settings_terminal_theme_preset_high_contrast">高对比度</string>
+    <string name="settings_terminal_font_panel_title">字体配置</string>
+    <string name="settings_terminal_font_size_title">字号</string>
+    <string name="settings_terminal_font_family_title">字体族</string>
+    <string name="settings_terminal_font_family_mono">等宽字体</string>
+    <string name="settings_terminal_font_family_system">系统字体</string>
+    <string name="settings_terminal_font_weight_title">字重</string>
+    <string name="settings_terminal_display_title">显示参数</string>
+    <string name="settings_terminal_line_height_title">行高</string>
+    <string name="settings_terminal_letter_spacing_title">字符间距</string>
+    <string name="settings_terminal_cursor_style_title">光标样式</string>
+    <string name="settings_terminal_cursor_block">块状</string>
+    <string name="settings_terminal_cursor_underline">下划线</string>
+    <string name="settings_terminal_cursor_bar">竖线</string>
+    <string name="settings_terminal_cursor_blink">光标闪烁</string>
+    <string name="settings_terminal_color_editor_title">颜色编辑</string>
+    <string name="settings_terminal_color_background">背景色</string>
+    <string name="settings_terminal_color_foreground">前景色</string>
+    <string name="settings_terminal_color_highlight">高亮色</string>
+    <string name="action_apply">应用</string>
     <string name="settings_terminal_keypad_title">键盘映射</string>
     <string name="settings_terminal_keypad_summary">自定义快捷键映射</string>
+    <string name="settings_terminal_keypad_mapping_hint">输入字符串或转义序列</string>
+    <string name="settings_terminal_keypad_mapping_edit_title">映射: %1$s</string>
+    <string name="settings_terminal_keyboard_height_title">键盘高度</string>
+    <string name="settings_terminal_keyboard_height_summary">调整虚拟键盘高度</string>
+    <string name="settings_terminal_keyboard_layout_title">键盘布局</string>
+    <string name="settings_terminal_keyboard_layout_summary">选择虚拟键盘布局模式</string>
+    <string name="settings_terminal_keyboard_reset_title">重置键盘</string>
+    <string name="settings_terminal_keyboard_reset_summary">恢复默认键盘设置</string>
+    <string name="settings_terminal_keyboard_height_updated">已更新键盘高度设置</string>
+    <string name="settings_terminal_keyboard_layout_updated">已更新键盘布局: %1$s</string>
+    <string name="settings_terminal_keyboard_reset_confirm_title">重置键盘</string>
+    <string name="settings_terminal_keyboard_reset_confirm_message">确定要重置键盘布局到默认状态吗？</string>
+    <string name="settings_terminal_keyboard_reset_done">键盘布局已重置</string>
     <string name="settings_terminal_behavior_title">行为设置</string>
     <string name="settings_terminal_behavior_summary">回车键、滚动缓冲区等</string>
+    <string name="settings_terminal_behavior_enter_title">回车发送换行</string>
+    <string name="settings_terminal_behavior_echo_title">启用本地回显</string>
+    <string name="settings_terminal_behavior_autoscroll_title">自动滚动输出</string>
+    <string name="settings_terminal_behavior_smooth_title">平滑滚动</string>
+    <string name="settings_terminal_behavior_copy_title">选中即复制</string>
+    <string name="settings_terminal_behavior_paste_title">点击即粘贴</string>
+    <string name="settings_terminal_behavior_bell_audio_title">响铃提示音</string>
+    <string name="settings_terminal_behavior_bell_visual_title">响铃闪烁</string>
     <string name="settings_terminal_keypad_hint">输入字符串或转义序列</string>
     <string name="settings_terminal_keypad_edit">映射: %1$s</string>
 
@@ -112,6 +218,10 @@
     <string name="msg_path_copied">路径已复制: %1$s</string>
     <string name="msg_file_created">文件已创建</string>
     <string name="msg_folder_created">文件夹已创建</string>
+    <string name="msg_input_required">不能为空</string>
+    <string name="msg_invalid_number">请输入有效数字</string>
+    <string name="msg_value_adjusted_to">已调整为 %1$d</string>
+    <string name="msg_path_required">路径不能为空</string>
     <string name="msg_save_success">保存成功</string>
     <string name="msg_save_fail">保存失败: %1$s</string>
     <string name="msg_download_success">下载成功: %1$s</string>
@@ -241,6 +351,10 @@
     <string name="settings_about_title">关于应用</string>
     <string name="settings_about_summary">版本与开源许可</string>
     <string name="settings_about_message">版本: 1.0.0\n\n开源许可: Apache 2.0\n\n一个现代化的移动端 SSH 与 Docker 客户端。</string>
+    <string name="settings_change_log_title">设置变更记录</string>
+    <string name="settings_change_log_summary">查看最近的设置修改</string>
+    <string name="settings_change_log_clear_title">清空记录</string>
+    <string name="settings_change_log_clear_summary">删除全部设置变更记录</string>
 
     <string name="notification_ssh_active_title">SSH 连接中</string>
     <string name="notification_ssh_active_content">%1$s</string>
@@ -307,6 +421,16 @@
         <item>大</item>
         <item>特大</item>
     </string-array>
+    <string-array name="keyboard_height_options">
+        <item>紧凑</item>
+        <item>标准</item>
+        <item>宽松</item>
+    </string-array>
+    <string-array name="keyboard_layout_options">
+        <item>标准</item>
+        <item>编程</item>
+        <item>服务器管理</item>
+    </string-array>
 
     <string-array name="disk_partitions">
         <item>/</item>
@@ -331,6 +455,12 @@
     <string-array name="terminal_behavior_options">
         <item>回车发送换行</item>
         <item>启用本地回显</item>
+        <item>输出后自动滚动</item>
+        <item>平滑滚动</item>
+        <item>选择即复制</item>
+        <item>轻触粘贴</item>
+        <item>Bell 声音提示</item>
+        <item>Bell 视觉提示</item>
     </string-array>
 
     <string-array name="keypad_mapping_labels">
@@ -379,11 +509,72 @@
         <item>*</item>
         <item>%</item>
         <item>`</item>
+        <item>\</item>
+        <item>_</item>
+        <item>$</item>
+        <item>#</item>
     </string-array>
 
     <string-array name="language_options">
         <item>跟随系统</item>
         <item>中文 (简体)</item>
         <item>English</item>
+    </string-array>
+
+    <!-- Session Persistence Settings -->
+    <string name="settings_main_session_policy_title">会话保持</string>
+    <string name="settings_main_session_policy_summary">SSH连接后台保持策略</string>
+    <string name="settings_session_policy_title">会话保持策略</string>
+    <string name="settings_session_policy_summary">后台保持与断开策略设置</string>
+    <string name="settings_session_policy_mode_title">保持策略</string>
+    <string name="settings_session_policy_always">始终保持连接</string>
+    <string name="settings_session_policy_smart">智能管理</string>
+    <string name="settings_session_policy_timeout">超时后断开</string>
+    <string name="settings_session_policy_immediate">立即断开</string>
+    <string name="settings_session_timeout_title">超时时间</string>
+    <string name="settings_session_timeout_unit">分钟</string>
+    <string name="settings_session_bg_disconnect_title">后台自动断开</string>
+    <string name="settings_session_bg_disconnect_message">切换到后台时是否自动断开连接？</string>
+    <string name="settings_session_bg_delay_title">断开延迟</string>
+    <string name="settings_session_bg_delay_unit">秒</string>
+    <string name="settings_session_reconnect_title">恢复时自动重连</string>
+    <string name="settings_session_keepalive_header">心跳保活</string>
+    <string name="settings_session_keepalive_title">启用心跳</string>
+    <string name="settings_session_keepalive_interval_title">心跳间隔</string>
+    <string name="settings_session_keepalive_interval_unit">秒</string>
+    <string name="settings_session_reset_title">重置策略</string>
+    <string name="settings_session_reset_summary">恢复默认设置</string>
+    <string name="settings_session_reset_confirm">确定要重置所有会话保持设置吗？</string>
+    <string name="settings_enabled">已启用</string>
+    <string name="settings_disabled">已禁用</string>
+    <string name="action_restore">恢复</string>
+    <string name="action_import">导入</string>
+
+    <!-- Backup & Restore Settings -->
+    <string name="settings_main_backup_title">备份与恢复</string>
+    <string name="settings_main_backup_summary">导出导入主机配置和设置</string>
+    <string name="settings_backup_title">备份与恢复</string>
+    <string name="settings_backup_create_header">创建备份</string>
+    <string name="settings_backup_create_full_title">完整备份</string>
+    <string name="settings_backup_create_full_summary">备份所有主机配置、设置和密钥信息</string>
+    <string name="settings_backup_export_csv_title">导出为 CSV</string>
+    <string name="settings_backup_export_csv_summary">导出主机列表为 CSV 格式（便于编辑）</string>
+    <string name="settings_backup_restore_header">恢复备份</string>
+    <string name="settings_backup_restore_full_title">从备份恢复</string>
+    <string name="settings_backup_restore_full_summary">从 JSON 备份文件恢复所有数据</string>
+    <string name="settings_backup_restore_confirm_title">确认恢复</string>
+    <string name="settings_backup_restore_confirm_message">恢复备份将覆盖现有的主机配置和设置，确定继续吗？</string>
+    <string name="settings_backup_import_csv_title">从 CSV 导入</string>
+    <string name="settings_backup_import_csv_summary">从 CSV 文件导入主机列表</string>
+    <string name="settings_backup_import_confirm_title">确认导入</string>
+    <string name="settings_backup_import_confirm_message">导入将添加新的主机配置，确定继续吗？</string>
+    <string name="settings_backup_note_header">说明</string>
+    <string name="settings_backup_note_content">• 完整备份包含主机配置、应用设置和密钥信息列表\n• 备份文件保存为 JSON 格式\n• CSV 导出仅包含主机列表，便于在电脑上编辑\n• 密钥文件本身不会包含在备份中，仅备份密钥文件名</string>
+
+    <string-array name="session_policy_options">
+        <item>始终保持连接</item>
+        <item>智能管理（WiFi保持）</item>
+        <item>超时后断开</item>
+        <item>立即断开</item>
     </string-array>
 </resources>

@@ -10,9 +10,16 @@ import androidx.appcompat.app.AppCompatDelegate;
  * 应用程序入口
  */
 public class OrcTermApplication extends Application {
+    private static OrcTermApplication instance;
+
+    public static Context getAppContext() {
+        return instance;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
+        instance = this;
         // 初始化全局配置
         initTheme();
     }

@@ -15,6 +15,9 @@ import com.orcterm.ui.TerminalActivity;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 主机桌面小部件数据工厂
+ */
 public class HostWidgetFactory implements RemoteViewsService.RemoteViewsFactory {
 
     private final Context context;

@@ -68,6 +68,15 @@ public class TerminalInputView extends AppCompatEditText {
         return new TerminalInputConnection(this, true);
     }
     
+    /**
+     * 粘贴文本到终端
+     */
+    public void pasteText(String text) {
+        if (inputListener != null && text != null) {
+            inputListener.onInput(text);
+        }
+    }
+    
     // 拦截硬件按键事件 (例如物理键盘回车)
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {

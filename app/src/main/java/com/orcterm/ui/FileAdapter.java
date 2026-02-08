@@ -21,6 +21,9 @@ import java.util.List;
 import java.util.Locale;
 import java.text.SimpleDateFormat;
 
+/**
+ * 文件列表适配器
+ */
 public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
 
     private List<SftpFile> files = new ArrayList<>();

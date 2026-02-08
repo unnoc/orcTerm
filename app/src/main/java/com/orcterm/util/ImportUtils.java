@@ -7,6 +7,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.UUID;
 
+/**
+ * 导入工具方法
+ */
 public class ImportUtils {
 
     public static HostEntity parseAndSave(Context context, String jsonString) throws Exception {

@@ -46,6 +46,44 @@ typedef struct {
     LIBSSH2_CHANNEL *channel; // 当前活动的 Shell 通道
 } SshContext;
 
+static int map_knownhost_key_type(int type) {
+    switch (type) {
+        case LIBSSH2_HOSTKEY_TYPE_RSA:
+            return LIBSSH2_KNOWNHOST_KEY_SSHRSA;
+        case LIBSSH2_HOSTKEY_TYPE_DSS:
+            return LIBSSH2_KNOWNHOST_KEY_SSHDSS;
+        case LIBSSH2_HOSTKEY_TYPE_ECDSA_256:
+            return LIBSSH2_KNOWNHOST_KEY_ECDSA_256;
+        case LIBSSH2_HOSTKEY_TYPE_ECDSA_384:
+            return LIBSSH2_KNOWNHOST_KEY_ECDSA_384;
+        case LIBSSH2_HOSTKEY_TYPE_ECDSA_521:
+            return LIBSSH2_KNOWNHOST_KEY_ECDSA_521;
+        case LIBSSH2_HOSTKEY_TYPE_ED25519:
+            return LIBSSH2_KNOWNHOST_KEY_ED25519;
+        default:
+            return LIBSSH2_KNOWNHOST_KEY_UNKNOWN;
+    }
+}
+
+static const char *hostkey_type_name(int type) {
+    switch (type) {
+        case LIBSSH2_HOSTKEY_TYPE_RSA:
+            return "RSA";
+        case LIBSSH2_HOSTKEY_TYPE_DSS:
+            return "DSA";
+        case LIBSSH2_HOSTKEY_TYPE_ECDSA_256:
+            return "ECDSA-256";
+        case LIBSSH2_HOSTKEY_TYPE_ECDSA_384:
+            return "ECDSA-384";
+        case LIBSSH2_HOSTKEY_TYPE_ECDSA_521:
+            return "ECDSA-521";
+        case LIBSSH2_HOSTKEY_TYPE_ED25519:
+            return "ED25519";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 // --- 辅助函数 ---
 
 /**
@@ -123,6 +161,146 @@ Java_com_orcterm_core_ssh_SshNative_connect(JNIEnv *env, jobject thiz, jstring h
     ctx->channel = NULL;
     
     return (jlong)ctx;
+}
+
+JNIEXPORT void JNICALL
+Java_com_orcterm_core_ssh_SshNative_setSessionTimeout(JNIEnv *env, jobject thiz, jlong handle, jint timeoutMs) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return;
+    libssh2_session_set_timeout(ctx->session, timeoutMs);
+}
+
+JNIEXPORT void JNICALL
+Java_com_orcterm_core_ssh_SshNative_setSessionReadTimeout(JNIEnv *env, jobject thiz, jlong handle, jint timeoutSec) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return;
+    libssh2_session_set_read_timeout(ctx->session, timeoutSec);
+}
+
+JNIEXPORT void JNICALL
+Java_com_orcterm_core_ssh_SshNative_setKeepaliveConfig(JNIEnv *env, jobject thiz, jlong handle, jboolean wantReply, jint intervalSec) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return;
+    libssh2_keepalive_config(ctx->session, wantReply ? 1 : 0, intervalSec < 0 ? 0 : (unsigned int)intervalSec);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_orcterm_core_ssh_SshNative_sendKeepalive(JNIEnv *env, jobject thiz, jlong handle) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return -1;
+    int secondsToNext = 0;
+    int rc = libssh2_keepalive_send(ctx->session, &secondsToNext);
+    if (rc != 0) {
+        return -1;
+    }
+    return secondsToNext;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_orcterm_core_ssh_SshNative_knownHostsCheck(JNIEnv *env, jobject thiz, jlong handle, jstring host, jint port, jstring knownHostsPath) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return LIBSSH2_KNOWNHOST_CHECK_FAILURE;
+
+    const char *hostStr = (*env)->GetStringUTFChars(env, host, 0);
+    const char *pathStr = (*env)->GetStringUTFChars(env, knownHostsPath, 0);
+
+    size_t keyLen = 0;
+    int keyType = 0;
+    const char *key = libssh2_session_hostkey(ctx->session, &keyLen, &keyType);
+    if (!key) {
+        (*env)->ReleaseStringUTFChars(env, host, hostStr);
+        (*env)->ReleaseStringUTFChars(env, knownHostsPath, pathStr);
+        return LIBSSH2_KNOWNHOST_CHECK_FAILURE;
+    }
+
+    LIBSSH2_KNOWNHOSTS *hosts = libssh2_knownhost_init(ctx->session);
+    if (!hosts) {
+        (*env)->ReleaseStringUTFChars(env, host, hostStr);
+        (*env)->ReleaseStringUTFChars(env, knownHostsPath, pathStr);
+        return LIBSSH2_KNOWNHOST_CHECK_FAILURE;
+    }
+
+    struct stat st;
+    if (stat(pathStr, &st) == 0) {
+        libssh2_knownhost_readfile(hosts, pathStr, LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+    }
+
+    int typemask = LIBSSH2_KNOWNHOST_TYPE_PLAIN | LIBSSH2_KNOWNHOST_KEYENC_RAW | map_knownhost_key_type(keyType);
+    struct libssh2_knownhost *known = NULL;
+    int rc = libssh2_knownhost_checkp(hosts, hostStr, port, key, keyLen, typemask, &known);
+    libssh2_knownhost_free(hosts);
+
+    (*env)->ReleaseStringUTFChars(env, host, hostStr);
+    (*env)->ReleaseStringUTFChars(env, knownHostsPath, pathStr);
+    return rc;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_orcterm_core_ssh_SshNative_knownHostsAdd(JNIEnv *env, jobject thiz, jlong handle, jstring host, jint port, jstring knownHostsPath, jstring comment) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return -1;
+
+    const char *hostStr = (*env)->GetStringUTFChars(env, host, 0);
+    const char *pathStr = (*env)->GetStringUTFChars(env, knownHostsPath, 0);
+    const char *commentStr = comment ? (*env)->GetStringUTFChars(env, comment, 0) : NULL;
+    size_t commentLen = commentStr ? strlen(commentStr) : 0;
+
+    size_t keyLen = 0;
+    int keyType = 0;
+    const char *key = libssh2_session_hostkey(ctx->session, &keyLen, &keyType);
+    if (!key) {
+        (*env)->ReleaseStringUTFChars(env, host, hostStr);
+        (*env)->ReleaseStringUTFChars(env, knownHostsPath, pathStr);
+        if (commentStr) (*env)->ReleaseStringUTFChars(env, comment, commentStr);
+        return -1;
+    }
+
+    LIBSSH2_KNOWNHOSTS *hosts = libssh2_knownhost_init(ctx->session);
+    if (!hosts) {
+        (*env)->ReleaseStringUTFChars(env, host, hostStr);
+        (*env)->ReleaseStringUTFChars(env, knownHostsPath, pathStr);
+        if (commentStr) (*env)->ReleaseStringUTFChars(env, comment, commentStr);
+        return -1;
+    }
+
+    struct stat st;
+    if (stat(pathStr, &st) == 0) {
+        libssh2_knownhost_readfile(hosts, pathStr, LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+    }
+
+    int typemask = LIBSSH2_KNOWNHOST_TYPE_PLAIN | LIBSSH2_KNOWNHOST_KEYENC_RAW | map_knownhost_key_type(keyType);
+    int rc = libssh2_knownhost_addc(hosts, hostStr, NULL, key, keyLen, commentStr, commentLen, typemask, NULL);
+    if (rc == 0) {
+        rc = libssh2_knownhost_writefile(hosts, pathStr, LIBSSH2_KNOWNHOST_FILE_OPENSSH);
+    }
+    libssh2_knownhost_free(hosts);
+
+    (*env)->ReleaseStringUTFChars(env, host, hostStr);
+    (*env)->ReleaseStringUTFChars(env, knownHostsPath, pathStr);
+    if (commentStr) (*env)->ReleaseStringUTFChars(env, comment, commentStr);
+    return rc == 0 ? 0 : -1;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_orcterm_core_ssh_SshNative_getHostKeyInfo(JNIEnv *env, jobject thiz, jlong handle) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return (*env)->NewStringUTF(env, "");
+
+    int keyType = 0;
+    size_t keyLen = 0;
+    const char *key = libssh2_session_hostkey(ctx->session, &keyLen, &keyType);
+    if (!key) return (*env)->NewStringUTF(env, "");
+
+    const unsigned char *hash = (const unsigned char *)libssh2_hostkey_hash(ctx->session, LIBSSH2_HOSTKEY_HASH_SHA256);
+    if (!hash) return (*env)->NewStringUTF(env, "");
+
+    unsigned char b64[128];
+    int outLen = EVP_EncodeBlock(b64, hash, 32);
+    b64[outLen] = 0;
+
+    char info[192];
+    snprintf(info, sizeof(info), "%s|SHA256:%s", hostkey_type_name(keyType), b64);
+    return (*env)->NewStringUTF(env, info);
 }
 
 /**

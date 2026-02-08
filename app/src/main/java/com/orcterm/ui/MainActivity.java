@@ -41,6 +41,9 @@ import com.orcterm.ui.nav.SettingsFragment;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * 应用主界面，管理底部导航与页面切换
+ */
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
@@ -51,6 +54,7 @@ public class MainActivity extends AppCompatActivity {
     private HostDao hostDao;
     private ExecutorService executor = Executors.newCachedThreadPool();
     private SharedPreferences prefs;
+    private boolean autoConnectHandled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -109,12 +113,37 @@ public class MainActivity extends AppCompatActivity {
 
         // Initialize ViewModel
         navViewModel = new ViewModelProvider(this).get(NavViewModel.class);
+        navViewModel.getCurrentHostId().observe(this, this::updateBottomNavHost);
 
         // Handle intent
         handleIntent(getIntent());
+
+        // 启动后自动连接首页主机
+        maybeAutoConnectHomeHost(savedInstanceState);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIntent(intent);
     }
 
     private void handleIntent(Intent intent) {
+        if (intent != null && intent.hasExtra("open_tab")) {
+            int tab = intent.getIntExtra("open_tab", 0);
+            int target = Math.max(0, Math.min(3, tab));
+            viewPager.setCurrentItem(target);
+            if (target == 0) {
+                bottomNavigationView.setSelectedItemId(R.id.nav_servers);
+            } else if (target == 1) {
+                bottomNavigationView.setSelectedItemId(R.id.nav_terminal);
+            } else if (target == 2) {
+                bottomNavigationView.setSelectedItemId(R.id.nav_files);
+            } else {
+                bottomNavigationView.setSelectedItemId(R.id.nav_profile);
+            }
+        }
         if (intent != null && intent.getData() != null) {
             Uri uri = intent.getData();
             if ("orcterm".equals(uri.getScheme())) {
@@ -127,6 +156,67 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
+    }
+
+    private void maybeAutoConnectHomeHost(Bundle savedInstanceState) {
+        if (autoConnectHandled) return;
+        autoConnectHandled = true;
+        if (savedInstanceState != null) return;
+        if (!prefs.getBoolean("home_host_auto_connect_enabled", false)) return;
+        long homeHostId = prefs.getLong("home_host_id", -1L);
+        if (homeHostId <= 0) return;
+        executor.execute(() -> {
+            HostEntity host = hostDao.findById(homeHostId);
+            if (host == null) return;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                navViewModel.setCurrentHostId(host.id);
+                Intent intent = new Intent(this, TerminalActivity.class);
+                intent.putExtra("host_id", host.id);
+                intent.putExtra("hostname", host.hostname);
+                intent.putExtra("username", host.username);
+                intent.putExtra("port", host.port);
+                intent.putExtra("password", host.password);
+                intent.putExtra("auth_type", host.authType);
+                intent.putExtra("key_path", host.keyPath);
+                intent.putExtra("container_engine", host.containerEngine);
+                startActivity(intent);
+            });
+        });
+    }
+
+    private void updateBottomNavHost(Long hostId) {
+        Menu menu = bottomNavigationView.getMenu();
+        MenuItem terminalItem = menu.findItem(R.id.nav_terminal);
+        MenuItem filesItem = menu.findItem(R.id.nav_files);
+        if (hostId == null) {
+            terminalItem.setTitle(getString(R.string.nav_terminal_title));
+            filesItem.setTitle(getString(R.string.nav_files_title));
+            return;
+        }
+        executor.execute(() -> {
+            HostEntity host = hostDao.findById(hostId);
+            runOnUiThread(() -> {
+                if (host == null) {
+                    terminalItem.setTitle(getString(R.string.nav_terminal_title));
+                    filesItem.setTitle(getString(R.string.nav_files_title));
+                    return;
+                }
+                String label = buildHostLabel(host);
+                terminalItem.setTitle(getString(R.string.nav_terminal_with_host, label));
+                filesItem.setTitle(getString(R.string.nav_files_with_host, label));
+            });
+        });
+    }
+
+    private String buildHostLabel(HostEntity host) {
+        if (host == null) return "";
+        if (!TextUtils.isEmpty(host.alias)) return host.alias;
+        String hostname = host.hostname == null ? "" : host.hostname;
+        String username = host.username == null ? "" : host.username;
+        if (TextUtils.isEmpty(username)) return hostname;
+        if (TextUtils.isEmpty(hostname)) return username;
+        return username + "@" + hostname;
     }
 
     public void startQrScan() {

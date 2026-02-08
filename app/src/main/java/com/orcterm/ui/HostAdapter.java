@@ -107,6 +107,12 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
         }
     }
 
+    // 清理首页主机列表状态数据
+    public void clearStatus() {
+        statusMap.clear();
+        notifyDataSetChanged();
+    }
+
     @NonNull
     @Override
     public HostViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -375,11 +381,13 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
             chart.getDescription().setEnabled(false);
             chart.getLegend().setEnabled(false);
             chart.setDrawHoleEnabled(true);
-            chart.setHoleColor(android.graphics.Color.TRANSPARENT); 
+            int holeColor = com.google.android.material.color.MaterialColors.getColor(chart, com.google.android.material.R.attr.colorSurface, android.graphics.Color.TRANSPARENT);
+            chart.setHoleColor(holeColor);
             chart.setHoleRadius(80f); // Increase hole radius for more space for text
             chart.setTransparentCircleRadius(0f); 
             chart.setDrawCenterText(true); 
-            chart.setCenterTextColor(0xFFFFFFFF);
+            int centerColor = com.google.android.material.color.MaterialColors.getColor(chart, com.google.android.material.R.attr.colorOnSurface, 0xFFFFFFFF);
+            chart.setCenterTextColor(centerColor);
             chart.setCenterTextSize(12f);
             chart.setCenterTextTypeface(android.graphics.Typeface.DEFAULT_BOLD);
             chart.setTouchEnabled(false);
@@ -427,7 +435,13 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
                    oldItem.port == newItem.port &&
                    oldItem.authType == newItem.authType &&
                    (oldItem.password == null ? newItem.password == null : oldItem.password.equals(newItem.password)) &&
-                   (oldItem.keyPath == null ? newItem.keyPath == null : oldItem.keyPath.equals(newItem.keyPath));
+                   (oldItem.keyPath == null ? newItem.keyPath == null : oldItem.keyPath.equals(newItem.keyPath)) &&
+                   oldItem.connectTimeoutSec == newItem.connectTimeoutSec &&
+                   oldItem.keepAliveIntervalSec == newItem.keepAliveIntervalSec &&
+                   oldItem.keepAliveReply == newItem.keepAliveReply &&
+                   oldItem.hostKeyPolicy == newItem.hostKeyPolicy &&
+                   oldItem.environmentType == newItem.environmentType &&
+                   (oldItem.terminalThemePreset == null ? newItem.terminalThemePreset == null : oldItem.terminalThemePreset.equals(newItem.terminalThemePreset));
         }
     }
 }

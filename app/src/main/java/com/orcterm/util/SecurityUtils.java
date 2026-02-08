@@ -13,41 +13,38 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 
+/**
+ * 加解密与压缩处理工具
+ */
 public class SecurityUtils {
 
     private static final String SALT_PREFIX = "Salted__";
 
     /**
-     * Decrypts OpenSSL AES-256-CBC PBKDF2 encrypted string.
-     * Expected format: "Salted__" (8 bytes) + Salt (8 bytes) + Ciphertext
+     * 解密 OpenSSL AES-256-CBC PBKDF2 加密内容
      */
     public static String decrypt(String base64Data, String password) throws Exception {
         byte[] encryptedBytes = Base64.decode(base64Data, Base64.DEFAULT);
         
-        // Check prefix
+        // 校验 Salted__ 前缀
         if (encryptedBytes.length < 16) {
             throw new IllegalArgumentException("Invalid data length");
         }
         
         byte[] prefix = Arrays.copyOfRange(encryptedBytes, 0, 8);
         if (!new String(prefix, StandardCharsets.US_ASCII).equals(SALT_PREFIX)) {
-            // Note: Some openssl versions/commands might not prepend Salted__, 
-            // but the command we provided (openssl enc ...) DOES.
-            // If strictly following the script, this check is valid.
             throw new IllegalArgumentException("Invalid encrypted format (Missing Salted__)");
         }
 
         byte[] salt = Arrays.copyOfRange(encryptedBytes, 8, 16);
         byte[] ciphertext = Arrays.copyOfRange(encryptedBytes, 16, encryptedBytes.length);
 
-        // Derive Key and IV
-        // PBKDF2 with SHA256, 10000 iterations
-        // We need 32 bytes for Key (AES-256) + 16 bytes for IV (AES block size)
+        // 推导密钥与 IV
         SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
         KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 10000, 256 + 128);
         byte[] derived = factory.generateSecret(spec).getEncoded();
 
-        // Split Key and IV
+        // 拆分密钥与 IV
         byte[] keyBytes = Arrays.copyOfRange(derived, 0, 32);
         byte[] ivBytes = Arrays.copyOfRange(derived, 32, 48);
 

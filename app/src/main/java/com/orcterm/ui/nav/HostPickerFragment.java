@@ -26,6 +26,9 @@ import com.orcterm.ui.SftpActivity;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 主机选择与入口跳转界面
+ */
 public class HostPickerFragment extends Fragment {
 
     public static final String ACTION_TERMINAL = "terminal";

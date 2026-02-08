@@ -4,15 +4,17 @@ import android.content.Context;
 import com.orcterm.R;
 import java.util.Locale;
 
+/**
+ * 操作系统图标匹配工具
+ */
 public class OsIconUtils {
 
     /**
-     * Get the resource ID for the OS icon based on the OS name.
-     * Uses dynamic resource lookup to avoid compilation errors if icons are missing.
+     * 根据系统名称获取对应的图标资源
      *
-     * @param context Context to access resources
-     * @param osName The name of the operating system (e.g., "Ubuntu 22.04")
-     * @return The resource ID of the matching icon, or the default Linux icon if not found.
+     * @param context 资源上下文
+     * @param osName 操作系统名称
+     * @return 匹配的图标资源 ID
      */
     public static int getOsIcon(Context context, String osName) {
         if (osName == null) {

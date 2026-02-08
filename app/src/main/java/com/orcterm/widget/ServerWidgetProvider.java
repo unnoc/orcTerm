@@ -17,6 +17,9 @@ import com.orcterm.ui.HostDetailActivity;
 import java.util.Random;
 import java.util.concurrent.Executors;
 
+/**
+ * 单主机状态小部件 Provider
+ */
 public class ServerWidgetProvider extends AppWidgetProvider {
 
     @Override

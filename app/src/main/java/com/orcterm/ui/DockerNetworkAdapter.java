@@ -14,6 +14,9 @@ import com.orcterm.core.docker.DockerNetwork;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 网络列表适配器
+ */
 public class DockerNetworkAdapter extends RecyclerView.Adapter<DockerNetworkAdapter.ViewHolder> {
 
     private List<DockerNetwork> networks = new ArrayList<>();

@@ -23,6 +23,9 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 
+/**
+ * 内置文本编辑器界面
+ */
 public class EditorActivity extends AppCompatActivity {
 
     private EditText editor;

@@ -31,6 +31,12 @@ public class HostEntity {
     public String osVersion;
     public String containerEngine; // "docker" or "podman"
     public String status; // "online", "offline", "unknown"
+    public int connectTimeoutSec = 10;
+    public int keepAliveIntervalSec = 0;
+    public boolean keepAliveReply = true;
+    public int hostKeyPolicy = 1;
+    public int environmentType = 2;
+    public String terminalThemePreset = "default";
 
     public HostEntity() {
     }

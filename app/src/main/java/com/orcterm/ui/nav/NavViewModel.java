@@ -4,6 +4,9 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
+/**
+ * 底部导航状态模型
+ */
 public class NavViewModel extends ViewModel {
 
     private final MutableLiveData<Integer> selectedIndex = new MutableLiveData<>(0);

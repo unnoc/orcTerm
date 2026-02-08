@@ -4,6 +4,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 
+/**
+ * Telnet 传输实现
+ */
 public class TelnetTransport implements Transport {
     private Socket socket;
     private InputStream input;
@@ -45,8 +48,7 @@ public class TelnetTransport implements Transport {
 
     @Override
     public void resize(int cols, int rows) {
-        // Send NAWS (Negotiate About Window Size) if supported
-        // Requires Telnet protocol implementation. Skipped for now.
+        // Telnet NAWS 协议未实现，当前忽略窗口尺寸通知
     }
 
     @Override

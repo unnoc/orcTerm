@@ -10,6 +10,9 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import com.orcterm.R;
 
+/**
+ * 媒体预览界面（图片/视频）
+ */
 public class MediaPreviewActivity extends AppCompatActivity {
 
     @Override

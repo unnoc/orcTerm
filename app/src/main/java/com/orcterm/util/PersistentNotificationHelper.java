@@ -12,6 +12,9 @@ import androidx.core.app.NotificationCompat;
 import com.orcterm.R;
 import com.orcterm.ui.TerminalActivity;
 
+/**
+ * 常驻通知管理
+ */
 public class PersistentNotificationHelper {
 
     private static final String CHANNEL_ID = "ssh_status";
@@ -68,4 +71,3 @@ public class PersistentNotificationHelper {
         }
     }
 }
-

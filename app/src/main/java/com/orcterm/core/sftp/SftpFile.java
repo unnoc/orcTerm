@@ -2,6 +2,9 @@ package com.orcterm.core.sftp;
 
 import org.json.JSONObject;
 
+/**
+ * SFTP 文件信息模型
+ */
 public class SftpFile {
     public String name;
     public boolean isDir;

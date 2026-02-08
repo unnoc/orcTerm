@@ -45,9 +45,59 @@
     <string name="settings_main_general_title">General</string>
     <string name="settings_main_general_summary">Language, notifications and cache</string>
     <string name="settings_main_general_summary_format">Language: %1$s</string>
+    <string name="settings_main_session_policy_title">Session Retention</string>
+    <string name="settings_main_session_policy_summary">Background SSH retention policy</string>
+    <string name="settings_session_policy_title">Session Retention Policy</string>
+    <string name="settings_session_policy_summary">Configure background retention and disconnect rules</string>
+    <string name="settings_section_connection">Connections &amp; Sessions</string>
+    <string name="settings_section_terminal_display">Terminal &amp; Appearance</string>
+    <string name="settings_section_data">Data &amp; Sync</string>
+    <string name="settings_section_general">System &amp; About</string>
+    <string name="settings_search_title">Settings Search</string>
+    <string name="settings_search_hint">Search settings</string>
+    <string name="settings_search_empty">No matching results</string>
+    <string name="settings_preview_header">Preview</string>
+    <string name="settings_terminal_preview_text">echo "OrcTerm Preview"\n$ ls -la\n$ git status</string>
+    <string name="nav_servers_title">Servers</string>
+    <string name="nav_terminal_title">Terminal</string>
+    <string name="nav_files_title">Files</string>
+    <string name="nav_settings_title">Settings</string>
+    <string name="nav_terminal_with_host">Terminal · %1$s</string>
+    <string name="nav_files_with_host">Files · %1$s</string>
+    <string name="session_empty_terminal">No active sessions</string>
+    <string name="session_empty_files">No active SSH sessions for SFTP</string>
+    <string name="session_status_connected">Connected</string>
+    <string name="session_status_disconnected">Disconnected</string>
+    <string name="session_host_format">%1$s@%2$s:%3$d</string>
+    <string name="session_host_no_user_format">%1$s:%2$d</string>
 
     <string name="settings_theme_mode_dark">Dark</string>
     <string name="settings_theme_mode_light">Light</string>
+
+    <string name="settings_terminal_theme_preview_title">Preview</string>
+    <string name="settings_terminal_theme_preset_title">Presets</string>
+    <string name="settings_terminal_theme_preset_dark">Dark</string>
+    <string name="settings_terminal_theme_preset_light">Light</string>
+    <string name="settings_terminal_theme_preset_high_contrast">High Contrast</string>
+    <string name="settings_terminal_font_panel_title">Font</string>
+    <string name="settings_terminal_font_size_title">Font Size</string>
+    <string name="settings_terminal_font_family_title">Font Family</string>
+    <string name="settings_terminal_font_family_mono">Monospace</string>
+    <string name="settings_terminal_font_family_system">System</string>
+    <string name="settings_terminal_font_weight_title">Font Weight</string>
+    <string name="settings_terminal_display_title">Display</string>
+    <string name="settings_terminal_line_height_title">Line Height</string>
+    <string name="settings_terminal_letter_spacing_title">Letter Spacing</string>
+    <string name="settings_terminal_cursor_style_title">Cursor Style</string>
+    <string name="settings_terminal_cursor_block">Block</string>
+    <string name="settings_terminal_cursor_underline">Underline</string>
+    <string name="settings_terminal_cursor_bar">Bar</string>
+    <string name="settings_terminal_cursor_blink">Cursor Blink</string>
+    <string name="settings_terminal_color_editor_title">Colors</string>
+    <string name="settings_terminal_color_background">Background</string>
+    <string name="settings_terminal_color_foreground">Foreground</string>
+    <string name="settings_terminal_color_highlight">Highlight</string>
+    <string name="action_apply">Apply</string>
 
     <string name="settings_ssh_manage_title">SSH Management</string>
     <string name="settings_cloud_sync_title">Cloud Sync</string>
@@ -55,10 +105,24 @@
     <string name="settings_theme_display_title">Theme &amp; Display</string>
     <string name="settings_general_title">General</string>
 
+    <string name="settings_ssh_quick_header">Quick Access</string>
+    <string name="settings_ssh_quick_terminal_title">Quick Terminal</string>
+    <string name="settings_ssh_quick_terminal_summary">Pick a host to open the terminal</string>
+    <string name="settings_ssh_quick_sftp_title">Quick File Manager</string>
+    <string name="settings_ssh_quick_sftp_summary">Pick a host to open SFTP</string>
+    <string name="settings_ssh_no_hosts">No hosts yet. Add one first.</string>
+
     <string name="settings_ssh_hosts_title">Hosts</string>
     <string name="settings_ssh_hosts_summary">Manage host list</string>
     <string name="settings_ssh_keys_title">Keys</string>
     <string name="settings_ssh_keys_summary">Generate/Import/Delete SSH keys</string>
+    <string name="settings_ssh_logs_header">Connection Logs</string>
+    <string name="settings_ssh_logs_title">SSH Connection Logs</string>
+    <string name="settings_ssh_logs_summary">View recent connection logs</string>
+    <string name="settings_ssh_logs_loading">Loading logs...</string>
+    <string name="settings_ssh_logs_empty">No connection logs found</string>
+    <string name="settings_ssh_log_title">Log: %1$s</string>
+    <string name="settings_ssh_log_deleted">Log deleted</string>
     <string name="settings_ssh_key_dir">Key store: %1$s</string>
     <string name="action_delete_key">Delete Key</string>
     <string name="settings_ssh_key_delete_confirm">Delete %1$s?</string>
@@ -66,6 +130,25 @@
     <string name="settings_ssh_key_generate_failed">Key generation failed</string>
     <string name="settings_ssh_key_imported">Imported: %1$s</string>
     <string name="settings_ssh_key_import_failed">Import failed: %1$s</string>
+    <string name="settings_ssh_config_header">SSH Settings</string>
+    <string name="settings_ssh_connect_timeout_title">Connect Timeout</string>
+    <string name="settings_ssh_connect_timeout_summary">Connect timeout %1$d s</string>
+    <string name="settings_ssh_read_timeout_title">Read Timeout</string>
+    <string name="settings_ssh_read_timeout_summary">Read timeout %1$d s</string>
+    <string name="settings_ssh_keepalive_interval_title">Keepalive Interval</string>
+    <string name="settings_ssh_keepalive_interval_summary">Keepalive %1$d s (0=off)</string>
+    <string name="settings_ssh_keepalive_reply_title">Keepalive Reply</string>
+    <string name="settings_ssh_keepalive_reply_on">On</string>
+    <string name="settings_ssh_keepalive_reply_off">Off</string>
+    <string name="settings_ssh_sftp_default_path_title">Default SFTP Path</string>
+    <string name="settings_ssh_home_header">Home Host</string>
+    <string name="settings_ssh_home_auto_connect_title">Auto-connect Home Host</string>
+    <string name="settings_ssh_home_auto_connect_summary_on">Enabled · %1$s</string>
+    <string name="settings_ssh_home_auto_connect_summary_off">Disabled</string>
+    <string name="settings_ssh_home_auto_connect_summary_no_host">No home host set</string>
+    <string name="settings_ssh_home_list_auto_fetch_title">Auto-fetch Host List Info</string>
+    <string name="settings_ssh_home_list_auto_fetch_summary_on">Enabled</string>
+    <string name="settings_ssh_home_list_auto_fetch_summary_off">Disabled</string>
 
     <string name="settings_cloud_status_header">Cloud Status</string>
     <string name="settings_cloud_server_label">Server</string>
@@ -91,10 +174,38 @@
     <string name="settings_terminal_font_summary">Adjust font size</string>
     <string name="settings_terminal_theme_title">Color Theme</string>
     <string name="settings_terminal_theme_summary">Select color scheme</string>
+    <string name="settings_terminal_theme_manage_header">Theme Management</string>
+    <string name="settings_terminal_theme_editor_title">Theme Editor</string>
+    <string name="settings_terminal_theme_editor_summary">Edit 16-color palette</string>
+    <string name="settings_terminal_theme_import_title">Import Theme</string>
+    <string name="settings_terminal_theme_import_summary">Import from JSON or CSV</string>
+    <string name="settings_terminal_theme_export_title">Export Theme</string>
+    <string name="settings_terminal_theme_export_summary">Copy JSON or CSV</string>
     <string name="settings_terminal_keypad_title">Keypad Mapping</string>
     <string name="settings_terminal_keypad_summary">Customize shortcuts</string>
+    <string name="settings_terminal_keypad_mapping_hint">Enter a string or escape sequence</string>
+    <string name="settings_terminal_keypad_mapping_edit_title">Mapping: %1$s</string>
+    <string name="settings_terminal_keyboard_height_title">Keyboard Height</string>
+    <string name="settings_terminal_keyboard_height_summary">Adjust virtual keyboard height</string>
+    <string name="settings_terminal_keyboard_layout_title">Keyboard Layout</string>
+    <string name="settings_terminal_keyboard_layout_summary">Choose virtual keyboard layout</string>
+    <string name="settings_terminal_keyboard_reset_title">Reset Keyboard</string>
+    <string name="settings_terminal_keyboard_reset_summary">Restore default keyboard settings</string>
+    <string name="settings_terminal_keyboard_height_updated">Keyboard height updated</string>
+    <string name="settings_terminal_keyboard_layout_updated">Keyboard layout updated: %1$s</string>
+    <string name="settings_terminal_keyboard_reset_confirm_title">Reset Keyboard</string>
+    <string name="settings_terminal_keyboard_reset_confirm_message">Reset keyboard layout to defaults?</string>
+    <string name="settings_terminal_keyboard_reset_done">Keyboard layout reset</string>
     <string name="settings_terminal_behavior_title">Behavior</string>
     <string name="settings_terminal_behavior_summary">Enter key, scrollback etc.</string>
+    <string name="settings_terminal_behavior_enter_title">Enter sends newline</string>
+    <string name="settings_terminal_behavior_echo_title">Local echo</string>
+    <string name="settings_terminal_behavior_autoscroll_title">Auto scroll output</string>
+    <string name="settings_terminal_behavior_smooth_title">Smooth scrolling</string>
+    <string name="settings_terminal_behavior_copy_title">Copy on select</string>
+    <string name="settings_terminal_behavior_paste_title">Paste on tap</string>
+    <string name="settings_terminal_behavior_bell_audio_title">Bell sound</string>
+    <string name="settings_terminal_behavior_bell_visual_title">Bell visual</string>
     <string name="settings_terminal_keypad_hint">Enter string or escape sequence</string>
     <string name="settings_terminal_keypad_edit">Map: %1$s</string>
 
@@ -112,6 +223,10 @@
     <string name="msg_path_copied">Path copied: %1$s</string>
     <string name="msg_file_created">File created</string>
     <string name="msg_folder_created">Folder created</string>
+    <string name="msg_input_required">Field cannot be empty</string>
+    <string name="msg_invalid_number">Please enter a valid number</string>
+    <string name="msg_value_adjusted_to">Adjusted to %1$d</string>
+    <string name="msg_path_required">Path cannot be empty</string>
     <string name="msg_save_success">Saved successfully</string>
     <string name="msg_save_fail">Save failed: %1$s</string>
     <string name="msg_download_success">Downloaded to: %1$s</string>
@@ -239,6 +354,10 @@
     <string name="settings_about_title">About</string>
     <string name="settings_about_summary">Version and license</string>
     <string name="settings_about_message">Version: 1.0.0\n\nLicense: Apache 2.0\n\nA modern mobile SSH &amp; Docker client.</string>
+    <string name="settings_change_log_title">Settings Change Log</string>
+    <string name="settings_change_log_summary">View recent setting changes</string>
+    <string name="settings_change_log_clear_title">Clear Log</string>
+    <string name="settings_change_log_clear_summary">Delete all setting change records</string>
 
     <string name="notification_ssh_active_title">SSH Connected</string>
     <string name="notification_ssh_active_content">%1$s</string>
@@ -305,6 +424,16 @@
         <item>Large</item>
         <item>Huge</item>
     </string-array>
+    <string-array name="keyboard_height_options">
+        <item>Compact</item>
+        <item>Standard</item>
+        <item>Comfortable</item>
+    </string-array>
+    <string-array name="keyboard_layout_options">
+        <item>Standard</item>
+        <item>Programming</item>
+        <item>Server Admin</item>
+    </string-array>
 
     <string-array name="disk_partitions">
         <item>/</item>
@@ -329,6 +458,12 @@
     <string-array name="terminal_behavior_options">
         <item>Send Newline on Enter</item>
         <item>Local Echo</item>
+        <item>Auto-scroll on Output</item>
+        <item>Smooth Scroll</item>
+        <item>Copy on Select</item>
+        <item>Paste on Tap</item>
+        <item>Bell Audio</item>
+        <item>Bell Visual</item>
     </string-array>
 
     <string-array name="keypad_mapping_labels">
@@ -377,6 +512,10 @@
         <item>*</item>
         <item>%</item>
         <item>`</item>
+        <item>\</item>
+        <item>_</item>
+        <item>$</item>
+        <item>#</item>
     </string-array>
 
     <string-array name="language_options">

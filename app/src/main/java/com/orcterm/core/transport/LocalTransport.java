@@ -4,6 +4,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Map;
 
+/**
+ * 本地 Shell 传输实现
+ */
 public class LocalTransport implements Transport {
     private Process process;
     private InputStream input;
@@ -51,8 +54,7 @@ public class LocalTransport implements Transport {
 
     @Override
     public void resize(int cols, int rows) {
-        // Java Process cannot easily resize PTY without native code (ioctl TIOCSWINSZ)
-        // Ignored for Local Shell in this implementation
+        // Java Process 无法直接调整 PTY，当前实现忽略
     }
 
     @Override

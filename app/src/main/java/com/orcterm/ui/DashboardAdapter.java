@@ -13,6 +13,9 @@ import com.orcterm.R;
 
 import java.util.List;
 
+/**
+ * 首页卡片列表适配器
+ */
 public class DashboardAdapter extends RecyclerView.Adapter<DashboardAdapter.DashboardViewHolder> {
 
     public static class DashboardItem {

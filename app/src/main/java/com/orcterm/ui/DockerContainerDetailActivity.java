@@ -20,6 +20,7 @@ import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.MaterialColors;
 import com.orcterm.R;
 import com.orcterm.core.ssh.SshNative;
+import com.orcterm.util.CommandConstants;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -29,6 +30,9 @@ import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * 容器详情与控制界面
+ */
 public class DockerContainerDetailActivity extends AppCompatActivity {
 
     private String containerId;
@@ -126,9 +130,9 @@ public class DockerContainerDetailActivity extends AppCompatActivity {
         btnStop = findViewById(R.id.btn_stop);
         btnRestart = findViewById(R.id.btn_restart);
         
-        btnStart.setOnClickListener(v -> controlContainer("start"));
-        btnStop.setOnClickListener(v -> controlContainer("stop"));
-        btnRestart.setOnClickListener(v -> controlContainer("restart"));
+        btnStart.setOnClickListener(v -> controlContainer(CommandConstants.CMD_DOCKER_ACTION_START));
+        btnStop.setOnClickListener(v -> controlContainer(CommandConstants.CMD_DOCKER_ACTION_STOP));
+        btnRestart.setOnClickListener(v -> controlContainer(CommandConstants.CMD_DOCKER_ACTION_RESTART));
     }
     
     private void setupChart(PieChart chart) {
@@ -168,8 +172,7 @@ public class DockerContainerDetailActivity extends AppCompatActivity {
             try {
                 ensureConnected();
                 // --no-stream ensures we get a snapshot and exit
-                String cmd = "docker stats " + containerId + " --no-stream --format \"{{.CPUPerc}}|{{.MemPerc}}\"";
-                String response = sshNative.exec(sshHandle, cmd);
+                String response = sshNative.exec(sshHandle, String.format(CommandConstants.CMD_DOCKER_STATS_CONTAINER, containerId));
                 
                 if (response != null && !response.trim().isEmpty()) {
                     String[] parts = response.trim().split("\\|");
@@ -226,8 +229,7 @@ public class DockerContainerDetailActivity extends AppCompatActivity {
         executor.execute(() -> {
             try {
                 ensureConnected();
-                String cmd = "docker " + action + " " + containerId;
-                sshNative.exec(sshHandle, cmd);
+                sshNative.exec(sshHandle, String.format(CommandConstants.CMD_DOCKER_ACTION_CONTAINER, action, containerId));
                 
                 // Reload details to reflect new status
                 mainHandler.post(this::loadDetails);
@@ -273,8 +275,7 @@ public class DockerContainerDetailActivity extends AppCompatActivity {
         executor.execute(() -> {
             try {
                 ensureConnected();
-                String cmd = "docker inspect " + containerId;
-                String response = sshNative.exec(sshHandle, cmd);
+                String response = sshNative.exec(sshHandle, String.format(CommandConstants.CMD_DOCKER_INSPECT, containerId));
                 
                 if (response == null || response.trim().isEmpty()) {
                     showError("未获取到数据");

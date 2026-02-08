@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.orcterm.R;
 import com.orcterm.core.ssh.SshNative;
+import com.orcterm.util.CommandConstants;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -73,8 +74,7 @@ public class DockerLogsActivity extends AppCompatActivity {
                     
                     // 暂时只获取最后100行
                     // "docker logs --tail 100 <id>"
-                    String cmd = "docker logs --tail 100 " + containerId;
-                    String logs = sshNative.exec(sshHandle, cmd);
+                    String logs = sshNative.exec(sshHandle, String.format(CommandConstants.CMD_DOCKER_LOGS_TAIL, containerId));
                     
                     mainHandler.post(() -> {
                         textLogs.setText(logs);

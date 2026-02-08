@@ -24,6 +24,7 @@ import com.orcterm.core.docker.DockerImage;
 import com.orcterm.core.docker.DockerNetwork;
 import com.orcterm.core.docker.DockerVolume;
 import com.orcterm.core.ssh.SshNative;
+import com.orcterm.util.CommandConstants;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -35,6 +36,9 @@ import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * 容器管理主界面
+ */
 public class DockerActivity extends AppCompatActivity {
 
     private RecyclerView recyclerContainers;
@@ -74,7 +78,7 @@ public class DockerActivity extends AppCompatActivity {
     private String password;
     private int authType;
     private String keyPath;
-    private String containerEngine = "docker";
+    private String containerEngine = CommandConstants.CMD_ENGINE_DOCKER;
     private String dockerVersion = "";
     
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -143,9 +147,9 @@ public class DockerActivity extends AppCompatActivity {
 
     private String getDockerVersionString() {
         if (sshHandle == 0) return "";
-        String version = sshNative.exec(sshHandle, getContainerCommand("version --format '{{.Server.Version}}'")).trim();
+        String version = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_VERSION_FORMAT)).trim();
         if (version.isEmpty() || version.contains("Error")) {
-            version = sshNative.exec(sshHandle, getContainerCommand("-v | awk '{print $3}' | tr -d ','")).trim();
+            version = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_VERSION_FALLBACK)).trim();
         }
         return version == null ? "" : version;
     }
@@ -292,7 +296,9 @@ public class DockerActivity extends AppCompatActivity {
     }
     
     private String getContainerCommand(String args) {
-        String engine = "podman".equalsIgnoreCase(containerEngine) ? "podman" : "docker";
+        String engine = CommandConstants.CMD_ENGINE_PODMAN.equalsIgnoreCase(containerEngine)
+            ? CommandConstants.CMD_ENGINE_PODMAN
+            : CommandConstants.CMD_ENGINE_DOCKER;
         return engine + " " + args;
     }
     
@@ -317,9 +323,9 @@ public class DockerActivity extends AppCompatActivity {
         popup.setOnMenuItemClickListener(item -> {
             String title = item.getTitle().toString();
             String action = "";
-            if ("启动".equals(title)) action = "start";
-            else if ("停止".equals(title)) action = "stop";
-            else if ("重启".equals(title)) action = "restart";
+            if ("启动".equals(title)) action = CommandConstants.CMD_DOCKER_ACTION_START;
+            else if ("停止".equals(title)) action = CommandConstants.CMD_DOCKER_ACTION_STOP;
+            else if ("重启".equals(title)) action = CommandConstants.CMD_DOCKER_ACTION_RESTART;
             else if ("日志".equals(title)) {
                 openLogs(container);
                 return true;
@@ -421,7 +427,7 @@ public class DockerActivity extends AppCompatActivity {
                 ensureConnected();
                 
                 // 3. Exec docker ps
-                String cmd = getContainerCommand("ps -a --format '{{json .}}'");
+                String cmd = getContainerCommand(CommandConstants.CMD_CONTAINER_PS_ALL_JSON);
                 String response = sshNative.exec(sshHandle, cmd);
                 
                 // 4. Parse
@@ -520,12 +526,12 @@ public class DockerActivity extends AppCompatActivity {
             try {
                 ensureConnected();
                 String version = getDockerVersionString();
-                String containerResponse = sshNative.exec(sshHandle, getContainerCommand("ps -a --format '{{json .}}'"));
+                String containerResponse = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_PS_ALL_JSON));
                 List<DockerContainer> containers = parseContainers(containerResponse);
                 int total = containers.size();
                 int running = (int) containers.stream().filter(c -> "running".equalsIgnoreCase(c.state)).count();
                 int stopped = Math.max(0, total - running);
-                String imageResponse = sshNative.exec(sshHandle, getContainerCommand("images --format '{{json .}}'"));
+                String imageResponse = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_IMAGES_JSON));
                 List<DockerImage> images = parseImages(imageResponse);
                 int imageCount = images.size();
                 dockerVersion = version;
@@ -566,7 +572,7 @@ public class DockerActivity extends AppCompatActivity {
         popup.getMenu().add("删除");
         popup.setOnMenuItemClickListener(item -> {
             if ("删除".equals(item.getTitle())) {
-                performDockerImageAction(image, "rmi");
+                performDockerImageAction(image, CommandConstants.CMD_CONTAINER_IMAGE_RM);
             }
             return true;
         });
@@ -578,7 +584,7 @@ public class DockerActivity extends AppCompatActivity {
         popup.getMenu().add("删除");
         popup.setOnMenuItemClickListener(item -> {
             if ("删除".equals(item.getTitle())) {
-                performSimpleDockerAction("network rm", network.id, () -> loadNetworks());
+                performSimpleDockerAction(CommandConstants.CMD_CONTAINER_NETWORK_RM, network.id, () -> loadNetworks());
             }
             return true;
         });
@@ -590,7 +596,7 @@ public class DockerActivity extends AppCompatActivity {
         popup.getMenu().add("删除");
         popup.setOnMenuItemClickListener(item -> {
             if ("删除".equals(item.getTitle())) {
-                performSimpleDockerAction("volume rm", volume.name, () -> loadVolumes());
+                performSimpleDockerAction(CommandConstants.CMD_CONTAINER_VOLUME_RM, volume.name, () -> loadVolumes());
             }
             return true;
         });
@@ -628,8 +634,7 @@ public class DockerActivity extends AppCompatActivity {
             try {
                 ensureConnected();
                 // docker images format json
-                String cmd = "docker images --format '{{json .}}'";
-                String response = sshNative.exec(sshHandle, cmd);
+                String response = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_IMAGES_JSON));
                 List<DockerImage> list = parseImages(response);
                 
                 mainHandler.post(() -> {
@@ -670,8 +675,7 @@ public class DockerActivity extends AppCompatActivity {
         executor.execute(() -> {
             try {
                 ensureConnected();
-                String cmd = "docker network ls --format '{{json .}}'";
-                String response = sshNative.exec(sshHandle, cmd);
+                String response = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_NETWORKS_JSON));
                 
                 List<DockerNetwork> list = new ArrayList<>();
                 String[] lines = response.split("\n");
@@ -703,7 +707,7 @@ public class DockerActivity extends AppCompatActivity {
         executor.execute(() -> {
             try {
                 ensureConnected();
-                String cmd = getContainerCommand("volume ls --format '{{json .}}'");
+                String cmd = getContainerCommand(CommandConstants.CMD_CONTAINER_VOLUMES_JSON);
                 String response = sshNative.exec(sshHandle, cmd);
                 
                 List<DockerVolume> list = new ArrayList<>();

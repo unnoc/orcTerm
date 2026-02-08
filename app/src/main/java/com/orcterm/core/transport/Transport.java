@@ -59,4 +59,10 @@ public interface Transport {
      * @return 如果已连接返回 true，否则返回 false
      */
     boolean isConnected();
+
+    /**
+     * 获取底层会话句柄 (仅 SSH 有效)
+     * @return 句柄值，0 表示无效或不支持
+     */
+    default long getHandle() { return 0; }
 }

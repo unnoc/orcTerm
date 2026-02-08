@@ -12,7 +12,7 @@ import java.util.concurrent.Executors;
 /**
  * 应用数据库类，基于 Room
  */
-@Database(entities = {HostEntity.class}, version = 3, exportSchema = false)
+@Database(entities = {HostEntity.class}, version = 4, exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
 
     public abstract HostDao hostDao();

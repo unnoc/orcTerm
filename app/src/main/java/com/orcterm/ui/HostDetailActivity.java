@@ -33,6 +33,9 @@ import com.github.mikephil.charting.data.PieEntry;
 import com.google.android.material.color.MaterialColors;
 import com.orcterm.R;
 import com.orcterm.core.ssh.SshNative;
+import com.orcterm.core.session.SessionInfo;
+import com.orcterm.core.session.SessionManager;
+import com.orcterm.util.CommandConstants;
 import com.orcterm.util.OsIconUtils;
 import com.orcterm.data.AppDatabase;
 import com.orcterm.data.HostEntity;
@@ -72,7 +75,10 @@ public class HostDetailActivity extends AppCompatActivity {
     private long sshHandle = 0;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private boolean isMonitoring = true;
+    private volatile boolean isMonitoring = false;
+    private volatile boolean monitoringTaskRunning = false;
+    private long sharedSessionId = -1;
+    private boolean keepSharedHandle = false;
 
     private String lsblkOutput = "";
     private List<Entry> netDownloadEntries = new ArrayList<>();
@@ -120,7 +126,6 @@ public class HostDetailActivity extends AppCompatActivity {
         setupListeners();
 
         sshNative = new SshNative();
-        startMonitoring();
     }
 
     private void initViews() {
@@ -217,6 +222,10 @@ public class HostDetailActivity extends AppCompatActivity {
     }
 
     private void startMonitoring() {
+        if (monitoringTaskRunning) {
+            return;
+        }
+        monitoringTaskRunning = true;
         executor.execute(() -> {
             try {
                 connectSsh();
@@ -228,6 +237,8 @@ public class HostDetailActivity extends AppCompatActivity {
                 }
             } catch (Exception e) {
                 mainHandler.post(() -> Toast.makeText(HostDetailActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            } finally {
+                monitoringTaskRunning = false;
             }
         });
     }
@@ -247,18 +258,57 @@ public class HostDetailActivity extends AppCompatActivity {
             if (ret != 0) {
                 throw new Exception("Auth failed");
             }
+            registerSharedSessionHandle();
         }
+    }
+    
+    // 将主机详情的 SSH 连接交给会话管理，退出后可在底部终端继续使用
+    private void registerSharedSessionHandle() {
+        if (sshHandle == 0 || keepSharedHandle) {
+            return;
+        }
+        SessionManager manager = SessionManager.getInstance();
+        SessionInfo existing = findExistingSession(manager.getSessions());
+        if (existing != null) {
+            sharedSessionId = existing.id;
+            if (manager.getTerminalSession(existing.id) == null) {
+                manager.putSharedHandle(existing.id, sshHandle);
+                keepSharedHandle = true;
+            }
+            manager.upsertSession(
+                new SessionInfo(existing.id, existing.name, hostname, port, username, password, authType, keyPath, true),
+                manager.getTerminalSession(existing.id)
+            );
+            return;
+        }
+        sharedSessionId = System.currentTimeMillis();
+        SessionInfo info = new SessionInfo(sharedSessionId, hostname, hostname, port, username, password, authType, keyPath, true);
+        manager.upsertSession(info, null);
+        manager.putSharedHandle(sharedSessionId, sshHandle);
+        keepSharedHandle = true;
+    }
+    
+    private SessionInfo findExistingSession(List<SessionInfo> sessions) {
+        for (SessionInfo session : sessions) {
+            if (session == null) continue;
+            if (!TextUtils.isEmpty(hostname) && hostname.equals(session.hostname)
+                && port == session.port
+                && ((username == null && session.username == null) || (username != null && username.equals(session.username)))) {
+                return session;
+            }
+        }
+        return null;
     }
 
     private void fetchSystemInfo() {
         try {
             // Run commands one by one or combined
-            String host = exec("hostname");
+            String host = exec(CommandConstants.CMD_HOSTNAME);
             // Try to get pretty name, fallback to uname
-            String release = exec("cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"'");
-            if (release.isEmpty()) release = exec("uname -o");
+            String release = exec(CommandConstants.CMD_OS_PRETTY_NAME);
+            if (release.isEmpty()) release = exec(CommandConstants.CMD_UNAME_O);
             
-            String ip = exec("hostname -I | awk '{print $1}'");
+            String ip = exec(CommandConstants.CMD_HOSTNAME_IP);
             
             String finalRelease = release;
             mainHandler.post(() -> {
@@ -334,8 +384,7 @@ public class HostDetailActivity extends AppCompatActivity {
 
     private void fetchStats() {
         try {
-            String cmd = "echo 'SECTION_LOAD'; cat /proc/loadavg; echo 'SECTION_CPU'; grep 'cpu ' /proc/stat; echo 'SECTION_MEM'; cat /proc/meminfo; echo 'SECTION_NET'; cat /proc/net/dev; echo 'SECTION_DISK_INFO'; lsblk -o NAME,FSTYPE,SIZE,MOUNTPOINT; echo 'SECTION_DISK_USAGE'; df -P -B1; echo 'SECTION_CONN'; ss -Htp 2>/dev/null || true; echo 'SECTION_PROCESS'; ps -eo pid,pcpu,pmem,stat,lstart,comm,args --sort=-pcpu | head -n 20";
-            String output = exec(cmd);
+            String output = exec(CommandConstants.CMD_MONITOR_STATS);
             parseStats(output);
 
         } catch (Exception e) {
@@ -438,9 +487,9 @@ public class HostDetailActivity extends AppCompatActivity {
                 if (timeDelta > 0) {
                     long rxDelta = rx - prevNetRx;
                     long txDelta = tx - prevNetTx;
-                    float rxSpeed = (float) rxDelta / timeDelta * 1000 / 1024 / 1024;
-                    float txSpeed = (float) txDelta / timeDelta * 1000 / 1024 / 1024;
-                    runOnUiThread(() -> updateNetUI(rxSpeed, txSpeed));
+                    float rxBytesPerSec = (float) rxDelta * 1000f / timeDelta;
+                    float txBytesPerSec = (float) txDelta * 1000f / timeDelta;
+                    runOnUiThread(() -> updateNetUI(rxBytesPerSec, txBytesPerSec));
                 }
             }
             prevNetRx = rx;
@@ -579,8 +628,22 @@ public class HostDetailActivity extends AppCompatActivity {
         if (progressMem != null) progressMem.setProgress(percent);
     }
 
-    private void updateNetUI(float downMb, float upMb) {
-        if (tvNetSpeed != null) tvNetSpeed.setText(String.format("↓ %.1fMB/s ↑ %.1fMB/s", downMb, upMb));
+    private void updateNetUI(float downBytesPerSec, float upBytesPerSec) {
+        float downMb = downBytesPerSec / 1024f / 1024f;
+        float upMb = upBytesPerSec / 1024f / 1024f;
+        if (tvNetSpeed != null) {
+            String downText = downMb >= 1f
+                ? String.format("%.1fMB/s", downMb)
+                : downBytesPerSec >= 1024f
+                    ? String.format("%.0fKB/s", downBytesPerSec / 1024f)
+                    : String.format("%.0fB/s", downBytesPerSec);
+            String upText = upMb >= 1f
+                ? String.format("%.1fMB/s", upMb)
+                : upBytesPerSec >= 1024f
+                    ? String.format("%.0fKB/s", upBytesPerSec / 1024f)
+                    : String.format("%.0fB/s", upBytesPerSec);
+            tvNetSpeed.setText(String.format("↓ %s ↑ %s", downText, upText));
+        }
         if (chartNetwork == null) return;
         if (netDownloadEntries.size() > 20) netDownloadEntries.remove(0);
         for (int i = 0; i < netDownloadEntries.size(); i++) {
@@ -902,11 +965,30 @@ public class HostDetailActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        isMonitoring = true;
+        startMonitoring();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        isMonitoring = false;
+        new Thread(() -> {
+            if (sshHandle != 0 && !keepSharedHandle) {
+                sshNative.disconnect(sshHandle);
+                sshHandle = 0;
+            }
+        }).start();
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         isMonitoring = false;
         new Thread(() -> {
-            if (sshHandle != 0) {
+            if (sshHandle != 0 && !keepSharedHandle) {
                 sshNative.disconnect(sshHandle);
                 sshHandle = 0;
             }

@@ -14,10 +14,14 @@ import com.orcterm.R;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.data.AppDatabase;
 import com.orcterm.data.HostEntity;
+import com.orcterm.util.CommandConstants;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * 进程详情界面
+ */
 public class ProcessDetailActivity extends AppCompatActivity {
 
     private TextView tvBasic;
@@ -106,12 +110,7 @@ public class ProcessDetailActivity extends AppCompatActivity {
 
     private void fetchDetail() {
         String pidStr = String.valueOf(pid);
-        String cmd = "echo 'SECTION_BASIC'; cat /proc/" + pidStr + "/status 2>/dev/null; " +
-            "echo 'SECTION_MEM'; cat /proc/" + pidStr + "/smaps_rollup 2>/dev/null; " +
-            "echo 'SECTION_FILES'; ls -l /proc/" + pidStr + "/fd 2>/dev/null; " +
-            "echo 'SECTION_ENV'; tr '\\0' '\\n' < /proc/" + pidStr + "/environ 2>/dev/null; " +
-            "echo 'SECTION_NET'; ss -Htp 2>/dev/null | grep 'pid=" + pidStr + "' || true";
-        String output = ssh.exec(sshHandle, cmd);
+        String output = ssh.exec(sshHandle, String.format(CommandConstants.CMD_PROCESS_DETAIL_TEMPLATE, pidStr, pidStr, pidStr, pidStr, pidStr));
         parseDetail(output);
     }
 
