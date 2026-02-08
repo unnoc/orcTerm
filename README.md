@@ -91,7 +91,7 @@ OrcTerm/
 3.  **同步** Gradle 项目。
 4.  在模拟器或真机上 **运行**。
 
-> **注意**: 当前版本包含 JNI 实现，但需要您自行提供编译好的静态库 (`libssh2.a`, `libssl.a`, `libcrypto.a`) 以启用完整的 SSH 功能。详情请参考 [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)。
+> **注意**: 当前版本包含 JNI 实现，但需要您自行提供编译好的静态库 (`libssh2.a`, `libssl.a`, `libcrypto.a`) 以启用完整的 SSH 功能。详情请参考 [IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)。
 
 ### 开发路线图
 
