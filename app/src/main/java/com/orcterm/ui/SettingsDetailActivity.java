@@ -175,6 +175,7 @@ public class SettingsDetailActivity extends AppCompatActivity {
         keys.add("terminal_theme_index");
         keys.add("terminal_font_family");
         keys.add("terminal_keypad_mapping");
+        keys.add("terminal_scrollback_lines");
         keys.add("keyboard_height_option");
         keys.add("keyboard_layout_option");
         keys.add("terminal_enter_newline");
@@ -238,6 +239,7 @@ public class SettingsDetailActivity extends AppCompatActivity {
         if ("sftp_default_path".equals(key)) return prefs.getString(key, "");
         if ("app_language".equals(key)) return prefs.getString(key, "system");
         if ("terminal_keypad_mapping".equals(key)) return prefs.getString(key, "");
+        if ("terminal_scrollback_lines".equals(key)) return prefs.getInt(key, 2000);
         return prefs.getString(key, "");
     }
 
@@ -265,6 +267,7 @@ public class SettingsDetailActivity extends AppCompatActivity {
         if ("terminal_theme_index".equals(key)) return getString(R.string.settings_terminal_theme_title);
         if ("terminal_font_family".equals(key)) return getString(R.string.settings_terminal_font_family_title);
         if ("terminal_keypad_mapping".equals(key)) return getString(R.string.settings_terminal_keypad_title);
+        if ("terminal_scrollback_lines".equals(key)) return getString(R.string.settings_terminal_scrollback_title);
         if ("keyboard_height_option".equals(key)) return getString(R.string.settings_terminal_keyboard_height_title);
         if ("keyboard_layout_option".equals(key)) return getString(R.string.settings_terminal_keyboard_layout_title);
         if ("terminal_enter_newline".equals(key)) return getString(R.string.settings_terminal_behavior_enter_title);
@@ -695,6 +698,8 @@ public class SettingsDetailActivity extends AppCompatActivity {
         addItem(R.drawable.ic_action_keyboard, getString(R.string.settings_terminal_keypad_title), getString(R.string.settings_terminal_keypad_summary), "terminal_keypad", v -> showKeypadMappingDialog());
         addItem(R.drawable.ic_action_format_size, getString(R.string.settings_terminal_keyboard_height_title), getString(R.string.settings_terminal_keyboard_height_summary), "terminal_keyboard_height", v -> showKeyboardHeightDialog());
         addItem(R.drawable.ic_action_grid, getString(R.string.settings_terminal_keyboard_layout_title), getString(R.string.settings_terminal_keyboard_layout_summary), "terminal_keyboard_layout", v -> showKeyboardLayoutDialog());
+        View scrollbackItem = addItem(R.drawable.ic_action_view_list, getString(R.string.settings_terminal_scrollback_title), "", "terminal_scrollback", v -> showScrollbackDialog());
+        updateScrollbackSummary(scrollbackItem);
         addItem(R.drawable.ic_action_refresh, getString(R.string.settings_terminal_keyboard_reset_title), getString(R.string.settings_terminal_keyboard_reset_summary), "terminal_keyboard_reset", v -> resetKeyboardLayout());
         addItem(R.drawable.ic_action_settings, getString(R.string.settings_terminal_behavior_title), getString(R.string.settings_terminal_behavior_summary), "terminal_behavior", v -> showTerminalBehaviorDialog());
         addDivider();
@@ -729,6 +734,10 @@ public class SettingsDetailActivity extends AppCompatActivity {
             })
             .setNegativeButton(getString(R.string.action_cancel), null)
             .show();
+    }
+
+    private void showScrollbackDialog() {
+        showSshNumberDialog(getString(R.string.settings_terminal_scrollback_title), "terminal_scrollback_lines", 2000, 100, 20000);
     }
     
     private void resetKeyboardLayout() {
@@ -1015,6 +1024,7 @@ public class SettingsDetailActivity extends AppCompatActivity {
         list.add(new SettingEntry("terminal_keypad", getString(R.string.settings_terminal_keypad_title), getString(R.string.settings_terminal_keypad_summary), "terminal", "terminal_keypad", R.drawable.ic_action_keyboard));
         list.add(new SettingEntry("terminal_keyboard_height", getString(R.string.settings_terminal_keyboard_height_title), getString(R.string.settings_terminal_keyboard_height_summary), "terminal", "terminal_keyboard_height", R.drawable.ic_action_format_size));
         list.add(new SettingEntry("terminal_keyboard_layout", getString(R.string.settings_terminal_keyboard_layout_title), getString(R.string.settings_terminal_keyboard_layout_summary), "terminal", "terminal_keyboard_layout", R.drawable.ic_action_grid));
+        list.add(new SettingEntry("terminal_scrollback", getString(R.string.settings_terminal_scrollback_title), getString(R.string.settings_terminal_scrollback_summary, prefs.getInt("terminal_scrollback_lines", 2000)), "terminal", "terminal_scrollback", R.drawable.ic_action_view_list));
         list.add(new SettingEntry("terminal_behavior", getString(R.string.settings_terminal_behavior_title), getString(R.string.settings_terminal_behavior_summary), "terminal", "terminal_behavior", R.drawable.ic_action_settings));
         list.add(new SettingEntry("theme_mode", getString(R.string.settings_theme_mode_title), getString(R.string.settings_theme_mode_summary), "theme_display", "theme_mode", R.drawable.ic_action_appearance));
         list.add(new SettingEntry("theme_background", getString(R.string.settings_theme_bg_title), getString(R.string.settings_theme_bg_summary), "theme_display", "theme_background", R.drawable.ic_action_image));
@@ -1520,6 +1530,13 @@ public class SettingsDetailActivity extends AppCompatActivity {
         TextView summary = item.findViewById(R.id.summary);
         String path = prefs.getString("sftp_default_path", "/root");
         summary.setText(path == null ? "/root" : path);
+        summary.setVisibility(View.VISIBLE);
+    }
+
+    private void updateScrollbackSummary(View item) {
+        TextView summary = item.findViewById(R.id.summary);
+        int lines = prefs.getInt("terminal_scrollback_lines", 2000);
+        summary.setText(getString(R.string.settings_terminal_scrollback_summary, lines));
         summary.setVisibility(View.VISIBLE);
     }
 

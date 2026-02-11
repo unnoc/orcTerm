@@ -12,6 +12,10 @@ import java.util.List;
  */
 public class TerminalEmulator {
 
+    public interface ScrollbackListener {
+        void onScrollbackLine(char[] chars, int[] styles);
+    }
+
     private int columns;
     private int rows;
 
@@ -95,6 +99,7 @@ public class TerminalEmulator {
 
     // 脏区域跟踪
     private DirtyRegion dirtyRegion = new DirtyRegion();
+    private ScrollbackListener scrollbackListener;
 
     // 光标位置
     private int cursorX = 0;
@@ -349,6 +354,14 @@ public class TerminalEmulator {
         int defaultStyle = encodeStyle(currentForeColor, currentBackColor, isBold, isUnderline, isInverse);
         int regionHeight = bottom - top + 1;
         int shift = Math.min(count, regionHeight);
+        if (scrollbackListener != null && top == 0) {
+            for (int i = 0; i < shift; i++) {
+                scrollbackListener.onScrollbackLine(
+                    Arrays.copyOf(charBuffer[top + i], columns),
+                    Arrays.copyOf(styleBuffer[top + i], columns)
+                );
+            }
+        }
         for (int i = top; i <= bottom - shift; i++) {
             System.arraycopy(charBuffer[i + shift], 0, charBuffer[i], 0, columns);
             System.arraycopy(styleBuffer[i + shift], 0, styleBuffer[i], 0, columns);
@@ -726,6 +739,10 @@ public class TerminalEmulator {
     }
     public boolean isCursorVisible() {
         return cursorVisible;
+    }
+
+    public void setScrollbackListener(ScrollbackListener listener) {
+        this.scrollbackListener = listener;
     }
 
     private void eraseChars(int n) {

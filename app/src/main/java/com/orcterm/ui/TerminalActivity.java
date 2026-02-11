@@ -107,6 +107,7 @@ public class TerminalActivity extends AppCompatActivity {
     private static final String PREF_FONT_WEIGHT = "terminal_font_weight";
     private static final String PREF_SELECTION_COLOR = "terminal_selection_color";
     private static final String PREF_SEARCH_HIGHLIGHT_COLOR = "terminal_search_highlight_color";
+    private static final String PREF_SCROLLBACK_LINES = "terminal_scrollback_lines";
     private static final String PREF_LAST_HOSTNAME = "terminal_last_hostname";
     private static final String PREF_LAST_USERNAME = "terminal_last_username";
     private static final String PREF_LAST_PORT = "terminal_last_port";
@@ -197,6 +198,7 @@ public class TerminalActivity extends AppCompatActivity {
     private Integer customForegroundColor;
     private int currentSelectionColor = 0x5533B5E5;
     private int currentSearchHighlightColor = 0x66FFD54F;
+    private int currentScrollbackLines = 2000;
     private boolean enterNewline = true;
     private boolean localEcho = false;
     private boolean immersiveMode = false;
@@ -480,6 +482,7 @@ public class TerminalActivity extends AppCompatActivity {
         localEcho = false; // terminalPrefs.getBoolean(PREF_LOCAL_ECHO, false);
         currentSelectionColor = terminalPrefs.getInt(PREF_SELECTION_COLOR, 0x5533B5E5);
         currentSearchHighlightColor = terminalPrefs.getInt(PREF_SEARCH_HIGHLIGHT_COLOR, 0x66FFD54F);
+        currentScrollbackLines = terminalPrefs.getInt(PREF_SCROLLBACK_LINES, 2000);
         if (terminalPrefs.contains(PREF_CUSTOM_BG)) {
             customBackgroundColor = terminalPrefs.getInt(PREF_CUSTOM_BG, 0xFF000000);
         }
@@ -791,6 +794,9 @@ public class TerminalActivity extends AppCompatActivity {
             } else if (PREF_ENTER_NEWLINE.equals(key) || PREF_LOCAL_ECHO.equals(key)) {
                 enterNewline = prefs.getBoolean(PREF_ENTER_NEWLINE, enterNewline);
                 localEcho = prefs.getBoolean(PREF_LOCAL_ECHO, localEcho);
+            } else if (PREF_SCROLLBACK_LINES.equals(key)) {
+                currentScrollbackLines = prefs.getInt(PREF_SCROLLBACK_LINES, currentScrollbackLines);
+                applyDisplayPreferencesToAllViews();
             } else if (PREF_FONT_WEIGHT.equals(key) || PREF_SELECTION_COLOR.equals(key) || PREF_SEARCH_HIGHLIGHT_COLOR.equals(key)) {
                 currentFontWeight = prefs.getInt(PREF_FONT_WEIGHT, currentFontWeight);
                 currentSelectionColor = prefs.getInt(PREF_SELECTION_COLOR, currentSelectionColor);
@@ -1018,35 +1024,6 @@ public class TerminalActivity extends AppCompatActivity {
         return params;
     }
 
-    private TerminalContainer findContainerForHost(String host, int port, String user) {
-        for (TerminalContainer container : containers) {
-            TerminalSession session = container.session;
-            if (session == null) continue;
-            if (TextUtils.equals(host, session.getHost())
-                    && port == session.getPort()
-                    && TextUtils.equals(user, session.getUsername())) {
-                return container;
-            }
-        }
-        return null;
-    }
-
-    private TerminalSession findSharedSessionForHost(String host, int port, String user) {
-        TerminalContainer existing = findContainerForHost(host, port, user);
-        if (existing != null && existing.session != null) {
-            return existing.session;
-        }
-        for (SessionInfo info : SessionManager.getInstance().getSessions()) {
-            if (info == null) continue;
-            if (info.port != port) continue;
-            if (!TextUtils.equals(host, info.hostname)) continue;
-            if (!TextUtils.equals(user, info.username)) continue;
-            TerminalSession session = SessionManager.getInstance().getTerminalSession(info.id);
-            if (session != null) return session;
-        }
-        return null;
-    }
-
     private SessionInfo findSessionInfoForHost(String host, int port, String user) {
         for (SessionInfo info : SessionManager.getInstance().getSessions()) {
             if (info == null) continue;
@@ -1177,40 +1154,18 @@ public class TerminalActivity extends AppCompatActivity {
         // 初始化会话
         ConnectionParams resolved = params != null ? params : buildParamsFromCurrent();
         TerminalSession session = SessionManager.getInstance().getTerminalSession(id);
-        if (session == null && !TextUtils.isEmpty(resolved.host)) {
-            session = findSharedSessionForHost(resolved.host, resolved.port, resolved.user);
-        }
         boolean isNewSession = (session == null);
 
         if (isNewSession) {
             boolean hasParams = !TextUtils.isEmpty(resolved.host) && !TextUtils.isEmpty(resolved.user);
             if (hasParams) {
-                SessionInfo existingInfo = findSessionInfoForHost(resolved.host, resolved.port, resolved.user);
                 session = new TerminalSession();
                 session.setHostKeyVerifier(createHostKeyVerifier());
-                long sharedHandle = 0;
-                if (existingInfo != null) {
-                    sharedHandle = SessionManager.getInstance().getAndRemoveSharedHandle(existingInfo.id);
-                }
-                if (sharedHandle != 0) {
-                    try {
-                        session.attachExistingSshHandle(sharedHandle, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
-                    } catch (Exception e) {
-                        session.connect(resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
-                    }
-                } else {
-                    session.connect(resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
-                }
+                session.connect(resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
                 SessionManager.getInstance().upsertSession(
                     new SessionInfo(container.id, container.name, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath, false),
                     session
                 );
-                if (existingInfo != null && existingInfo.id != container.id) {
-                    SessionManager.getInstance().upsertSession(
-                        new SessionInfo(existingInfo.id, existingInfo.name, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath, false),
-                        session
-                    );
-                }
             }
         } else {
             container.connected = session.isConnected();
@@ -1220,8 +1175,7 @@ public class TerminalActivity extends AppCompatActivity {
             String infoPass = !TextUtils.isEmpty(resolved.host) ? resolved.password : session.getPassword();
             int infoAuth = !TextUtils.isEmpty(resolved.host) ? resolved.authType : session.getAuthType();
             String infoKey = !TextUtils.isEmpty(resolved.host) ? resolved.keyPath : session.getKeyPath();
-            SessionInfo existingInfo = findSessionInfoForHost(infoHost, infoPort, infoUser);
-            if (!TextUtils.isEmpty(infoHost) && (existingInfo == null || existingInfo.id == container.id)) {
+            if (!TextUtils.isEmpty(infoHost)) {
                 SessionManager.getInstance().upsertSession(
                     new SessionInfo(
                         container.id,
@@ -1236,7 +1190,7 @@ public class TerminalActivity extends AppCompatActivity {
                     ),
                     session
                 );
-            }
+             }
         }
 
         if (session != null) {
@@ -1251,6 +1205,7 @@ public class TerminalActivity extends AppCompatActivity {
         TerminalEmulator emulator = new TerminalEmulator(80, 24);
         container.emulator = emulator;
         view.attachEmulator(emulator);
+        view.setMaxScrollbackLines(currentScrollbackLines);
         view.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         view.setFontSize(currentFontSize);
         view.setColorScheme(getEffectiveScheme());
@@ -1365,10 +1320,6 @@ public class TerminalActivity extends AppCompatActivity {
                 continue;
             }
             TerminalSession session = container.session;
-            SessionInfo existing = findSessionInfoForHost(session.getHost(), session.getPort(), session.getUsername());
-            if (existing != null && existing.id != container.id) {
-                continue;
-            }
             SessionManager.getInstance().upsertSession(
                 new SessionInfo(
                     container.id,
@@ -1665,6 +1616,9 @@ public class TerminalActivity extends AppCompatActivity {
         if (text == null || text.isEmpty()) return;
         TerminalContainer container = activeContainer;
         if (container == null) return;
+        if (container.view != null) {
+            container.view.scrollToBottom();
+        }
         String send = normalizeLineEnding(text);
         recordInputHistory(container, send);
         if (localEcho && container.view != null) {
@@ -3419,6 +3373,7 @@ public class TerminalActivity extends AppCompatActivity {
             v.setTypeface(tf);
             v.setSelectionColor(currentSelectionColor);
             v.setSearchHighlightColor(currentSearchHighlightColor);
+            v.setMaxScrollbackLines(currentScrollbackLines);
             if (terminalBackground != null) {
                 v.setBackgroundImage(terminalBackground);
                 v.setBackgroundAlpha(terminalBackgroundAlpha);

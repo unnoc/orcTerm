@@ -69,6 +69,7 @@
     <string name="terminal_keyboard_toggle_show">显示键盘</string>
     <string name="terminal_keyboard_toggle_hide">隐藏键盘</string>
     <string name="terminal_keyboard_options">键盘选项</string>
+    <string name="terminal_scrollback_hint">已离开底部</string>
     <string name="terminal_empty_title">还没有终端会话</string>
     <string name="terminal_empty_body">创建一个会话，开始连接并执行命令</string>
     <string name="terminal_empty_action">新建会话</string>
@@ -200,6 +201,8 @@
     <string name="settings_terminal_keyboard_height_summary">调整虚拟键盘高度</string>
     <string name="settings_terminal_keyboard_layout_title">键盘布局</string>
     <string name="settings_terminal_keyboard_layout_summary">选择虚拟键盘布局模式</string>
+    <string name="settings_terminal_scrollback_title">滚动回看</string>
+    <string name="settings_terminal_scrollback_summary">保留最近 %1$d 行输出</string>
     <string name="settings_terminal_keyboard_reset_title">重置键盘</string>
     <string name="settings_terminal_keyboard_reset_summary">恢复默认键盘设置</string>
     <string name="settings_terminal_keyboard_height_updated">已更新键盘高度设置</string>

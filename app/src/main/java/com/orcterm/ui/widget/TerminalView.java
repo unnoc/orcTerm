@@ -13,6 +13,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 
+import com.orcterm.R;
 import com.orcterm.core.terminal.TerminalEmulator;
 
 /**
@@ -43,6 +44,8 @@ public class TerminalView extends View {
     private Paint lineNumberPaint;
     private Paint bracketMatchPaint;
     private Paint highRiskPaint;
+    private Paint scrollHintPaint;
+    private Paint scrollHintTextPaint;
     private boolean selectionActive;
     private int selectionStartRow;
     private int selectionStartCol;
@@ -62,6 +65,10 @@ public class TerminalView extends View {
     private int bracketMatchColor = 0x66FFD54F;
     private int highRiskHighlightColor = 0x55FF5252;
     private String pendingPreviewContent;
+    private String scrollHintText;
+    private final java.util.ArrayList<ScrollbackLine> scrollbackLines = new java.util.ArrayList<>();
+    private int scrollOffsetLines = 0;
+    private int maxScrollbackLines = 2000;
 
     // ANSI color table (0-15 for 16-color, 16-255 for 256-color)
     private int[] colors = new int[256];
@@ -71,6 +78,16 @@ public class TerminalView extends View {
     
     // Rendering optimization: Paint cache
     private java.util.Map<Integer, Paint> colorPaintCache = new java.util.HashMap<>();
+
+    private static class ScrollbackLine {
+        private final char[] chars;
+        private final int[] styles;
+
+        private ScrollbackLine(char[] chars, int[] styles) {
+            this.chars = chars;
+            this.styles = styles;
+        }
+    }
 
     // Cursor style related fields
     public enum CursorStyle {
@@ -249,23 +266,13 @@ public class TerminalView extends View {
     
     public int getMatchCount(String query) {
         if (query == null || query.isEmpty() || emulator == null) return 0;
-        
-        TerminalEmulator.ScreenBuffer buffer = emulator.getScreenBuffer();
-        if (buffer == null) return 0;
-        
-        int rows = buffer.getRowCount();
-        int cols = buffer.getColumnCount();
+        int rows = getVisibleRowCount();
+        int cols = getVisibleColumnCount();
         String lowerQuery = query.toLowerCase(java.util.Locale.getDefault());
         int count = 0;
         
         for (int row = 0; row < rows; row++) {
-            StringBuilder lineBuilder = new StringBuilder(cols);
-            for (int col = 0; col < cols; col++) {
-                char c = buffer.getChar(row, col);
-                if (c == 0) c = ' '; // 空字符显示为空格
-                lineBuilder.append(c);
-            }
-            String line = lineBuilder.toString();
+            String line = buildDisplayLine(row, cols);
             String lowerLine = line.toLowerCase(java.util.Locale.getDefault());
             
             int startIndex = 0;
@@ -395,6 +402,13 @@ public class TerminalView extends View {
         bracketMatchPaint.setColor(bracketMatchColor);
         highRiskPaint = new Paint();
         highRiskPaint.setColor(highRiskHighlightColor);
+        scrollHintPaint = new Paint();
+        scrollHintPaint.setColor(0xAA000000);
+        scrollHintPaint.setStyle(Paint.Style.FILL);
+        scrollHintTextPaint = new Paint(textPaint);
+        scrollHintTextPaint.setColor(Color.WHITE);
+        scrollHintTextPaint.setTextSize(dpToPx(11));
+        scrollHintText = getResources().getString(R.string.terminal_scrollback_hint);
 
         initColors();
 
@@ -431,7 +445,9 @@ public class TerminalView extends View {
 
             @Override
             public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
-                if (activePointerCount == 1 && !selectionActive) {
+                int pointers = e2 != null ? e2.getPointerCount() : 1;
+                if (pointers == 1 && !selectionActive) {
+                    scrollByPixels(distanceY);
                     return true;
                 }
                 return false;
@@ -451,6 +467,10 @@ public class TerminalView extends View {
 
     public void attachEmulator(TerminalEmulator emulator) {
         this.emulator = emulator;
+        resetScrollback();
+        if (this.emulator != null) {
+            this.emulator.setScrollbackListener(this::addScrollbackLine);
+        }
         if (getWidth() > 0 && getHeight() > 0) {
             int cols = (int) (getWidth() / charWidth);
             int rows = (int) (getHeight() / charHeight);
@@ -476,6 +496,7 @@ public class TerminalView extends View {
         if (pendingPreviewContent != null && w > 0 && h > 0) {
             applyPreviewContent(pendingPreviewContent);
         }
+        setScrollOffset(scrollOffsetLines);
     }
 
     public void append(String data) {
@@ -517,6 +538,9 @@ public class TerminalView extends View {
 
         // Draw cursor
         drawCursor(canvas);
+
+        // Draw scroll hint when not at bottom
+        drawScrollHint(canvas);
     }
 
     @Override
@@ -632,8 +656,10 @@ public class TerminalView extends View {
         TerminalEmulator.ScreenBuffer buffer = emulator.getScreenBuffer();
         if (buffer == null) return;
 
-        int rows = buffer.getRowCount();
-        int cols = buffer.getColumnCount();
+        int rows = getVisibleRowCount();
+        int cols = getVisibleColumnCount();
+        int baseRow = getDisplayBaseRow();
+        int scrollbackCount = scrollbackLines.size();
 
         int digits = showLineNumbers ? String.valueOf(rows).length() : 0;
         float lineNumberWidth = showLineNumbers ? (digits + 1) * charWidth : 0f;
@@ -647,18 +673,29 @@ public class TerminalView extends View {
                 String num = String.format(java.util.Locale.getDefault(), "%" + digits + "d", row + 1);
                 canvas.drawText(num, 0, num.length(), 0, baseline, lineNumberPaint);
             }
-            if (showHighRiskHighlight && isHighRiskLine(buffer, row, cols)) {
+            if (showHighRiskHighlight && isHighRiskLine(row, cols)) {
                 highRiskPaint.setColor(highRiskHighlightColor);
                 canvas.drawRect(xOffset, y, xOffset + cols * charWidth, y + charHeight, highRiskPaint);
             }
             float x = xOffset;
             
             for (int col = 0; col < cols; col++) {
-                char c = buffer.getChar(row, col);
-                
-                // Get character and its style information
-                int fgColor = buffer.getForegroundColor(row, col);
-                int bgColor = buffer.getBackgroundColor(row, col);
+                int globalRow = baseRow + row;
+                char c;
+                int fgColor;
+                int bgColor;
+                if (globalRow < scrollbackCount) {
+                    ScrollbackLine line = scrollbackLines.get(globalRow);
+                    int style = (col >= 0 && col < line.styles.length) ? line.styles[col] : 0;
+                    c = (col >= 0 && col < line.chars.length) ? line.chars[col] : ' ';
+                    fgColor = decodeForegroundColor(style);
+                    bgColor = decodeBackgroundColor(style);
+                } else {
+                    int bufferRow = globalRow - scrollbackCount;
+                    c = buffer.getChar(bufferRow, col);
+                    fgColor = buffer.getForegroundColor(bufferRow, col);
+                    bgColor = buffer.getBackgroundColor(bufferRow, col);
+                }
                 
                 // Map color indices to actual colors
                 int actualFgColor = getColorFromIndex(fgColor);
@@ -762,23 +799,14 @@ public class TerminalView extends View {
             return;
         }
         
-        TerminalEmulator.ScreenBuffer buffer = emulator.getScreenBuffer();
-        if (buffer == null) return;
-        
-        int rows = buffer.getRowCount();
-        int cols = buffer.getColumnCount();
+        int rows = getVisibleRowCount();
+        int cols = getVisibleColumnCount();
         String lowerSearch = searchQuery.toLowerCase(java.util.Locale.getDefault());
         float xOffset = getLineNumberOffset(rows);
         
         for (int row = 0; row < rows; row++) {
             // 获取整行文本
-            StringBuilder lineBuilder = new StringBuilder(cols);
-            for (int col = 0; col < cols; col++) {
-                char c = buffer.getChar(row, col);
-                if (c == 0) c = ' '; // 空字符显示为空格
-                lineBuilder.append(c);
-            }
-            String line = lineBuilder.toString();
+            String line = buildDisplayLine(row, cols);
             String lowerLine = line.toLowerCase(java.util.Locale.getDefault());
             
             int startIndex = 0;
@@ -808,6 +836,7 @@ public class TerminalView extends View {
      */
     private void drawCursor(Canvas canvas) {
         if (emulator == null || !emulator.isCursorVisible()) return;
+        if (scrollOffsetLines > 0) return;
 
         // Handle blinking
         if (cursorBlink) {
@@ -841,6 +870,24 @@ public class TerminalView extends View {
                              barX + 2, cursorY + charHeight, cursorPaint);
                 break;
         }
+    }
+
+    private void drawScrollHint(Canvas canvas) {
+        if (scrollOffsetLines <= 0 || scrollHintPaint == null || scrollHintTextPaint == null) return;
+        String text = scrollHintText;
+        if (text == null || text.isEmpty()) {
+            text = getResources().getString(R.string.terminal_scrollback_hint);
+        }
+        float padding = dpToPx(6);
+        float textWidth = scrollHintTextPaint.measureText(text);
+        float textHeight = scrollHintTextPaint.getTextSize();
+        float right = getWidth() - padding;
+        float left = right - textWidth - padding * 2;
+        float top = padding;
+        float bottom = top + textHeight + padding * 1.5f;
+        float radius = dpToPx(6);
+        canvas.drawRoundRect(left, top, right, bottom, radius, radius, scrollHintPaint);
+        canvas.drawText(text, left + padding, top + textHeight, scrollHintTextPaint);
     }
 
     /**
@@ -964,6 +1011,8 @@ public class TerminalView extends View {
         int cols = Math.max(10, (int) (getWidth() / charWidth));
         int rows = Math.max(5, (int) (getHeight() / charHeight));
         emulator = new TerminalEmulator(cols, rows);
+        resetScrollback();
+        emulator.setScrollbackListener(this::addScrollbackLine);
         emulator.write(content);
         invalidate();
     }
@@ -972,14 +1021,8 @@ public class TerminalView extends View {
         return c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}';
     }
 
-    private boolean isHighRiskLine(TerminalEmulator.ScreenBuffer buffer, int row, int cols) {
-        StringBuilder sb = new StringBuilder(cols);
-        for (int col = 0; col < cols; col++) {
-            char c = buffer.getChar(row, col);
-            if (c == 0) c = ' ';
-            sb.append(c);
-        }
-        String line = sb.toString().trim().toLowerCase(java.util.Locale.getDefault());
+    private boolean isHighRiskLine(int row, int cols) {
+        String line = buildDisplayLine(row, cols).trim().toLowerCase(java.util.Locale.getDefault());
         if (line.isEmpty()) return false;
         return line.contains("rm -rf")
             || line.contains("mkfs")
@@ -1063,6 +1106,126 @@ public class TerminalView extends View {
         if (!showLineNumbers || rows <= 0) return 0f;
         int digits = String.valueOf(rows).length();
         return (digits + 1) * charWidth;
+    }
+
+    private int getVisibleRowCount() {
+        return emulator != null ? emulator.getRows() : 0;
+    }
+
+    private int getVisibleColumnCount() {
+        return emulator != null ? emulator.getColumns() : 0;
+    }
+
+    private int getTotalRowCount() {
+        return scrollbackLines.size() + getVisibleRowCount();
+    }
+
+    private int getMaxScrollOffset() {
+        int visible = getVisibleRowCount();
+        int total = getTotalRowCount();
+        return Math.max(0, total - visible);
+    }
+
+    private int getDisplayBaseRow() {
+        int visible = getVisibleRowCount();
+        int total = getTotalRowCount();
+        int maxOffset = getMaxScrollOffset();
+        if (scrollOffsetLines > maxOffset) scrollOffsetLines = maxOffset;
+        if (scrollOffsetLines < 0) scrollOffsetLines = 0;
+        return Math.max(0, total - visible - scrollOffsetLines);
+    }
+
+    private void setScrollOffset(int offset) {
+        int max = getMaxScrollOffset();
+        int clamped = Math.max(0, Math.min(offset, max));
+        if (clamped != scrollOffsetLines) {
+            scrollOffsetLines = clamped;
+            invalidate();
+        }
+    }
+
+    private void scrollByPixels(float distanceY) {
+        if (charHeight <= 0) return;
+        int delta = Math.round(distanceY / charHeight);
+        if (delta != 0) {
+            setScrollOffset(scrollOffsetLines + delta);
+        }
+    }
+
+    private void addScrollbackLine(char[] chars, int[] styles) {
+        if (chars == null || styles == null) return;
+        scrollbackLines.add(new ScrollbackLine(chars, styles));
+        if (scrollOffsetLines > 0) {
+            scrollOffsetLines = Math.min(scrollOffsetLines + 1, getMaxScrollOffset());
+        }
+        if (scrollbackLines.size() > maxScrollbackLines) {
+            int remove = scrollbackLines.size() - maxScrollbackLines;
+            for (int i = 0; i < remove; i++) {
+                scrollbackLines.remove(0);
+            }
+            if (scrollOffsetLines > 0) {
+                scrollOffsetLines = Math.max(0, scrollOffsetLines - remove);
+            }
+        }
+    }
+
+    private void resetScrollback() {
+        scrollbackLines.clear();
+        scrollOffsetLines = 0;
+    }
+
+    public void setMaxScrollbackLines(int maxLines) {
+        maxScrollbackLines = Math.max(0, maxLines);
+        if (scrollbackLines.size() > maxScrollbackLines) {
+            int remove = scrollbackLines.size() - maxScrollbackLines;
+            for (int i = 0; i < remove; i++) {
+                scrollbackLines.remove(0);
+            }
+            scrollOffsetLines = Math.max(0, scrollOffsetLines - remove);
+        }
+        setScrollOffset(scrollOffsetLines);
+    }
+
+    public void scrollToBottom() {
+        setScrollOffset(0);
+    }
+
+    public boolean isAtBottom() {
+        return scrollOffsetLines == 0;
+    }
+
+    private int decodeForegroundColor(int style) {
+        return (style >> 8) & 0xFF;
+    }
+
+    private int decodeBackgroundColor(int style) {
+        return style & 0xFF;
+    }
+
+    private String buildDisplayLine(int row, int cols) {
+        StringBuilder sb = new StringBuilder(cols);
+        if (emulator == null) return "";
+        int baseRow = getDisplayBaseRow();
+        int globalRow = baseRow + row;
+        int scrollbackCount = scrollbackLines.size();
+        if (globalRow < scrollbackCount) {
+            ScrollbackLine line = scrollbackLines.get(globalRow);
+            for (int col = 0; col < cols; col++) {
+                char c = (col >= 0 && col < line.chars.length) ? line.chars[col] : ' ';
+                if (c == 0) c = ' ';
+                sb.append(c);
+            }
+            return sb.toString();
+        }
+        TerminalEmulator.ScreenBuffer buffer = emulator.getScreenBuffer();
+        if (buffer == null) return "";
+        int bufferRow = globalRow - scrollbackCount;
+        for (int col = 0; col < cols; col++) {
+            char c = buffer.getChar(bufferRow, col);
+            if (c == 0) c = ' ';
+            sb.append(c);
+        }
+        return sb.toString();
     }
 
     private void clearSelection() {
