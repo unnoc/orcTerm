@@ -22,9 +22,14 @@ public class TerminalKeypadView extends HorizontalScrollView {
     public interface OnKeypadLongClickListener {
         void onKeyLongClick(String key, String value);
     }
+    
+    public interface OnLayoutChangeListener {
+        void onLayoutChanged(int mode);
+    }
 
     private OnKeypadClickListener listener;
     private OnKeypadLongClickListener longClickListener;
+    private OnLayoutChangeListener layoutChangeListener;
     private LinearLayout rootLayout;
     private java.util.Map<String, String> customMapping = new java.util.HashMap<>();
 
@@ -44,6 +49,7 @@ public class TerminalKeypadView extends HorizontalScrollView {
     private int keyMarginPx;
     private int keyCornerRadiusPx;
     private int basePadding;
+    private int layoutMode = 0; // 0=standard, 1=programming, 2=server
 
     public TerminalKeypadView(Context context) {
         super(context);
@@ -58,85 +64,17 @@ public class TerminalKeypadView extends HorizontalScrollView {
     private void init(Context context) {
         rootLayout = new LinearLayout(context);
         rootLayout.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout row1 = new LinearLayout(context);
-        row1.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout row2 = new LinearLayout(context);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout row3 = new LinearLayout(context);
-        row3.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout row4 = new LinearLayout(context);
-        row4.setOrientation(LinearLayout.HORIZONTAL);
         keyBgColor = ContextCompat.getColor(context, R.color.terminal_key_bg);
         keyBgActiveColor = ContextCompat.getColor(context, R.color.terminal_key_bg_active);
         keyTextColor = ContextCompat.getColor(context, R.color.terminal_key_text);
         keyTextActiveColor = ContextCompat.getColor(context, R.color.terminal_key_text_active);
-        keyHeightPx = dpToPx(30);
-        keyPaddingPx = dpToPx(8);
+        keyHeightPx = dpToPx(28);
+        keyPaddingPx = dpToPx(6);
         keyMarginPx = dpToPx(2);
-        keyCornerRadiusPx = dpToPx(8);
-        basePadding = dpToPx(6);
+        keyCornerRadiusPx = dpToPx(10);
+        basePadding = dpToPx(4);
         rootLayout.setPadding(basePadding, basePadding, basePadding, basePadding);
-        row1.setPadding(0, 0, 0, dpToPx(6));
-        row2.setPadding(0, 0, 0, dpToPx(6));
-        row3.setPadding(0, 0, 0, dpToPx(6));
-    
-        // 第一行：功能键和方向键
-        addKey(context, row1, "KBD", "KBD");
-        addKey(context, row1, "ESC", "\u001b");
-        addKey(context, row1, "TAB", "\t");
-        addKey(context, row1, "⌫", "\u007f");
-        btnCtrl = addKey(context, row1, "CTRL", "CTRL");
-        btnAlt = addKey(context, row1, "ALT", "ALT");
-        btnMeta = addKey(context, row1, "META", "META");
-        addKey(context, row1, "F1", "\u001bOP");
-        addKey(context, row1, "F2", "\u001bOQ");
-        addKey(context, row1, "F3", "\u001bOR");
-        addKey(context, row1, "F4", "\u001bOS");
-        addKey(context, row1, "F5", "\u001b[15~");
-        addKey(context, row1, "F6", "\u001b[17~");
-        addKey(context, row1, "F7", "\u001b[18~");
-        addKey(context, row1, "F8", "\u001b[19~");
-        addKey(context, row1, "F9", "\u001b[20~");
-        addKey(context, row1, "F10", "\u001b[21~");
-        addKey(context, row1, "F11", "\u001b[23~");
-        addKey(context, row1, "F12", "\u001b[24~");
-    
-        // 第二行：方向键和编辑键
-        addKey(context, row2, "INS", "\u001b[2~");
-        addKey(context, row2, "HOME", "\u001b[1~");
-        addKey(context, row2, "PGUP", "\u001b[5~");
-        addKey(context, row2, "↑", "\u001b[A");
-        addKey(context, row2, "DEL", "\u001b[3~");
-        addKey(context, row2, "END", "\u001b[4~");
-        addKey(context, row2, "PGDN", "\u001b[6~");
-        addKey(context, row2, "←", "\u001b[D");
-        addKey(context, row2, "↓", "\u001b[B");
-        addKey(context, row2, "→", "\u001b[C");
-    
-        // 第三行：常用符号
-        addKey(context, row3, "|", "|");
-        addKey(context, row3, "&", "&");
-        addKey(context, row3, "~", "~");
-        addKey(context, row3, "/", "/");
-        addKey(context, row3, "\\", "\\");
-        addKey(context, row3, "*", "*");
-        addKey(context, row3, "$", "$");
-        addKey(context, row3, "#", "#");
-    
-        // 第四行：快捷键和更多符号
-        addKey(context, row4, "CTRL+C", "\u0003");
-        addKey(context, row4, "CTRL+V", "\u0016");
-        addKey(context, row4, "CTRL+Z", "\u001a");
-        addKey(context, row4, "CTRL+D", "\u0004");
-        addKey(context, row4, "CTRL+A", "\u0001");
-        addKey(context, row4, "CTRL+X", "\u0018");
-        addKey(context, row4, "CTRL+S", "\u0013");
-        addKey(context, row4, "SPACE", " ");
-    
-        rootLayout.addView(row1);
-        rootLayout.addView(row2);
-        rootLayout.addView(row3);
-        rootLayout.addView(row4);
+        buildLayout(context);
         
         this.addView(rootLayout);
         this.setFillViewport(true);
@@ -144,6 +82,10 @@ public class TerminalKeypadView extends HorizontalScrollView {
     }
 
     private MaterialButton addKey(Context context, LinearLayout parent, String label, String value) {
+        return addKey(context, parent, label, value, 0f, 0);
+    }
+
+    private MaterialButton addKey(Context context, LinearLayout parent, String label, String value, float weight, int minWidthDp) {
         MaterialButton btn = new MaterialButton(context);
         btn.setText(label);
         btn.setAllCaps(false);
@@ -159,9 +101,14 @@ public class TerminalKeypadView extends HorizontalScrollView {
         btn.setStrokeWidth(0);
         btn.setBackgroundTintList(ColorStateList.valueOf(keyBgColor));
         btn.setPadding(keyPaddingPx, 0, keyPaddingPx, 0);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, keyHeightPx);
+        LinearLayout.LayoutParams params = weight > 0f
+                ? new LinearLayout.LayoutParams(0, keyHeightPx, weight)
+                : new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, keyHeightPx);
         params.setMargins(keyMarginPx, 0, keyMarginPx, 0);
         btn.setLayoutParams(params);
+        if (minWidthDp > 0) {
+            btn.setMinWidth(dpToPx(minWidthDp));
+        }
 
         btn.setOnClickListener(v -> {
             handleKeyPress(label, value);
@@ -179,10 +126,151 @@ public class TerminalKeypadView extends HorizontalScrollView {
         return btn;
     }
 
+    private void buildLayout(Context context) {
+        rootLayout.removeAllViews();
+        LinearLayout row1 = new LinearLayout(context);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout row2 = new LinearLayout(context);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout row3 = new LinearLayout(context);
+        row3.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout row4 = new LinearLayout(context);
+        row4.setOrientation(LinearLayout.HORIZONTAL);
+
+        row1.setPadding(0, 0, 0, dpToPx(4));
+        row2.setPadding(0, 0, 0, dpToPx(4));
+        row3.setPadding(0, 0, 0, dpToPx(4));
+
+        // Common head row
+        addKey(context, row1, "KBD", "KBD", 0f, 56);
+        addKey(context, row1, "LAY", "LAY", 0f, 56);
+        addKey(context, row1, "ESC", "\u001b");
+        addKey(context, row1, "TAB", "\t");
+        addKey(context, row1, "⌫", "\u007f");
+        btnCtrl = addKey(context, row1, "CTRL", "CTRL");
+        btnAlt = addKey(context, row1, "ALT", "ALT");
+        btnMeta = addKey(context, row1, "META", "META");
+
+        if (layoutMode == 1) {
+            // Programming layout
+            addKey(context, row2, "(", "(");
+            addKey(context, row2, ")", ")");
+            addKey(context, row2, "[", "[");
+            addKey(context, row2, "]", "]");
+            addKey(context, row2, "{", "{");
+            addKey(context, row2, "}", "}");
+            addKey(context, row2, "<", "<");
+            addKey(context, row2, ">", ">");
+            addKey(context, row2, "=", "=");
+            addKey(context, row2, "==", "==");
+            addKey(context, row2, "!=", "!=");
+
+            addKey(context, row3, "&", "&");
+            addKey(context, row3, "&&", "&&");
+            addKey(context, row3, "|", "|");
+            addKey(context, row3, "||", "||");
+            addKey(context, row3, "->", "->");
+            addKey(context, row3, "=>", "=>");
+            addKey(context, row3, "::", "::");
+            addKey(context, row3, "//", "//");
+            addKey(context, row3, "/*", "/*");
+            addKey(context, row3, "*/", "*/");
+            addKey(context, row3, "-", "-");
+            addKey(context, row3, "_", "_");
+            addKey(context, row3, ".", ".");
+            addKey(context, row3, ",", ",");
+            addKey(context, row3, ":", ":");
+            addKey(context, row3, ";", ";");
+            addKey(context, row3, "?", "?");
+
+            addKey(context, row4, "CTRL+C", "\u0003");
+            addKey(context, row4, "CTRL+V", "\u0016");
+            addKey(context, row4, "CTRL+Z", "\u001a");
+            addKey(context, row4, "CTRL+L", "\u000c");
+            addKey(context, row4, "CTRL+U", "\u0015");
+            addKey(context, row4, "CTRL+W", "\u0017");
+            addKey(context, row4, "SPACE", " ", 2f, 72);
+        } else if (layoutMode == 2) {
+            // Server layout
+            addKey(context, row2, "INS", "\u001b[2~");
+            addKey(context, row2, "HOME", "\u001b[1~");
+            addKey(context, row2, "END", "\u001b[4~");
+            addKey(context, row2, "PGUP", "\u001b[5~");
+            addKey(context, row2, "PGDN", "\u001b[6~");
+            addKey(context, row2, "↑", "\u001b[A");
+            addKey(context, row2, "↓", "\u001b[B");
+            addKey(context, row2, "←", "\u001b[D");
+            addKey(context, row2, "→", "\u001b[C");
+
+            addKey(context, row3, "|", "|");
+            addKey(context, row3, "&", "&");
+            addKey(context, row3, ";", ";");
+            addKey(context, row3, ":", ":");
+            addKey(context, row3, "/", "/");
+            addKey(context, row3, "\\", "\\");
+            addKey(context, row3, "-", "-");
+            addKey(context, row3, "_", "_");
+            addKey(context, row3, "~", "~");
+            addKey(context, row3, "`", "`");
+
+            addKey(context, row4, "CTRL+C", "\u0003");
+            addKey(context, row4, "CTRL+D", "\u0004");
+            addKey(context, row4, "CTRL+Z", "\u001a");
+            addKey(context, row4, "CTRL+L", "\u000c");
+            addKey(context, row4, "CTRL+R", "\u0012");
+            addKey(context, row4, "CTRL+W", "\u0017");
+            addKey(context, row4, "CTRL+B", "\u0002");
+            addKey(context, row4, "CTRL+P", "\u0010");
+            addKey(context, row4, "CTRL+N", "\u000e");
+            addKey(context, row4, "CTRL+E", "\u0005");
+            addKey(context, row4, "CTRL+K", "\u000b");
+            addKey(context, row4, "SPACE", " ", 2f, 72);
+        } else {
+            // Standard layout
+            addKey(context, row2, "HOME", "\u001b[1~");
+            addKey(context, row2, "END", "\u001b[4~");
+            addKey(context, row2, "PGUP", "\u001b[5~");
+            addKey(context, row2, "PGDN", "\u001b[6~");
+            addKey(context, row2, "↑", "\u001b[A");
+            addKey(context, row2, "↓", "\u001b[B");
+            addKey(context, row2, "←", "\u001b[D");
+            addKey(context, row2, "→", "\u001b[C");
+
+            addKey(context, row3, "|", "|");
+            addKey(context, row3, "&", "&");
+            addKey(context, row3, "~", "~");
+            addKey(context, row3, "/", "/");
+            addKey(context, row3, "\\", "\\");
+            addKey(context, row3, "*", "*");
+            addKey(context, row3, "$", "$");
+            addKey(context, row3, "#", "#");
+
+            addKey(context, row4, "CTRL+C", "\u0003");
+            addKey(context, row4, "CTRL+V", "\u0016");
+            addKey(context, row4, "CTRL+Z", "\u001a");
+            addKey(context, row4, "CTRL+D", "\u0004");
+            addKey(context, row4, "CTRL+A", "\u0001");
+            addKey(context, row4, "CTRL+X", "\u0018");
+            addKey(context, row4, "CTRL+S", "\u0013");
+            addKey(context, row4, "CTRL+L", "\u000c");
+            addKey(context, row4, "SPACE", " ", 2f, 72);
+        }
+
+        rootLayout.addView(row1);
+        rootLayout.addView(row2);
+        rootLayout.addView(row3);
+        rootLayout.addView(row4);
+        updateModifierIndicator();
+    }
+
     /**
      * 处理按键事件，包括修饰键管理
      */
     private void handleKeyPress(String label, String value) {
+        if ("LAY".equals(label)) {
+            setLayoutMode((layoutMode + 1) % 3);
+            return;
+        }
         // 处理修饰键切换
         if ("CTRL".equals(label)) {
             isCtrlPressed = !isCtrlPressed;
@@ -245,10 +333,24 @@ public class TerminalKeypadView extends HorizontalScrollView {
         this.longClickListener = listener;
     }
 
+    public void setLayoutChangeListener(OnLayoutChangeListener listener) {
+        this.layoutChangeListener = listener;
+    }
+
     public void setCustomMapping(java.util.Map<String, String> mapping) {
         customMapping.clear();
         if (mapping != null) {
             customMapping.putAll(mapping);
+        }
+    }
+    
+    public void setLayoutMode(int mode) {
+        if (mode < 0 || mode > 2) mode = 0;
+        if (layoutMode == mode) return;
+        layoutMode = mode;
+        buildLayout(getContext());
+        if (layoutChangeListener != null) {
+            layoutChangeListener.onLayoutChanged(layoutMode);
         }
     }
     
@@ -259,9 +361,8 @@ public class TerminalKeypadView extends HorizontalScrollView {
         // 清除现有布局
         this.removeAllViews();
         rootLayout.removeAllViews();
-        
-        // 重新初始化
-        init(getContext());
+        buildLayout(getContext());
+        this.addView(rootLayout);
     }
 
     private void updateKeyStyle(MaterialButton button, boolean active) {

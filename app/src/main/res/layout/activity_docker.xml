@@ -10,24 +10,29 @@
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:theme="@style/Theme.OrcTerm">
+        android:animateLayoutChanges="true"
+        android:background="?attr/colorSurface"
+        android:theme="@style/Theme.OrcTerm"
+        app:liftOnScroll="true">
 
-        <androidx.appcompat.widget.Toolbar
+        <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
+            style="@style/Widget.OrcTerm.TopAppBar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary"
+            android:background="?attr/colorSurface"
             app:title="Docker Containers"
+            app:titleTextColor="?attr/colorOnSurface"
             app:popupTheme="@style/Theme.OrcTerm" />
 
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tab_layout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="?attr/colorPrimary"
-            app:tabTextColor="@android:color/white"
-            app:tabSelectedTextColor="@android:color/white"
-            app:tabIndicatorColor="@android:color/white"
+            android:background="?attr/colorSurface"
+            app:tabTextColor="?attr/colorOnSurfaceVariant"
+            app:tabSelectedTextColor="?attr/colorOnSurface"
+            app:tabIndicatorColor="?attr/colorPrimary"
             app:tabMode="scrollable"/>
 
     </com.google.android.material.appbar.AppBarLayout>

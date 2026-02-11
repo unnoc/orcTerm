@@ -7,6 +7,7 @@ import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.ProgressBar;
+import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
@@ -144,6 +145,7 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
 
     class HostViewHolder extends RecyclerView.ViewHolder {
         private final TextView tvIp, tvTemperature, tvLatency, tvCores, tvMemTotal, tvDiskTotal, tvUptime;
+        private final TextView tvHostDetail;
         private final ImageView ivStatus;
         
         private final View layoutLinear, layoutDigital, layoutRing;
@@ -159,11 +161,12 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
         
         private final CheckBox checkBox;
         private final ImageView btnMore;
-        private final androidx.cardview.widget.CardView cardView;
+        private final com.google.android.material.card.MaterialCardView cardView;
 
         private HostViewHolder(View itemView) {
             super(itemView);
             tvIp = itemView.findViewById(R.id.tv_ip);
+            tvHostDetail = itemView.findViewById(R.id.tv_host_detail);
             tvTemperature = itemView.findViewById(R.id.tv_temperature);
             tvLatency = itemView.findViewById(R.id.tv_latency);
             ivStatus = itemView.findViewById(R.id.iv_status);
@@ -200,7 +203,7 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
             
             checkBox = itemView.findViewById(R.id.checkbox_select);
             btnMore = itemView.findViewById(R.id.btn_more_actions);
-            cardView = (androidx.cardview.widget.CardView) itemView;
+            cardView = (com.google.android.material.card.MaterialCardView) itemView;
         }
 
         public void bind(HostEntity host, HostStatus status, OnItemClickListener listener, 
@@ -209,6 +212,17 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
             
             // Basic Info
             tvIp.setText(host.alias != null && !host.alias.isEmpty() ? host.alias : host.hostname);
+            if (tvHostDetail != null) {
+                String hostname = host.hostname == null ? "" : host.hostname;
+                String username = host.username == null ? "" : host.username;
+                String detail;
+                if (TextUtils.isEmpty(username)) {
+                    detail = itemView.getContext().getString(R.string.session_host_no_user_format, hostname, host.port);
+                } else {
+                    detail = itemView.getContext().getString(R.string.session_host_format, username, hostname, host.port);
+                }
+                tvHostDetail.setText(detail);
+            }
             
             // Toggle Layout
             layoutDigital.setVisibility(displayStyle == 0 ? View.VISIBLE : View.GONE);
@@ -226,7 +240,8 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
                 // Default / Loading state
                 tvTemperature.setText("");
                 tvLatency.setText("- ms");
-                ivStatus.setImageTintList(android.content.res.ColorStateList.valueOf(0xFFBDBDBD)); // Grey
+                ivStatus.setImageTintList(android.content.res.ColorStateList.valueOf(
+                        androidx.core.content.ContextCompat.getColor(itemView.getContext(), R.color.status_neutral)));
                 tvCores.setText("- Cores");
                 tvMemTotal.setText("- G");
                 tvDiskTotal.setText("- G");
@@ -256,6 +271,14 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
             
             applyLayoutDensity();
 
+            // Highlight current host
+            int strokeWidth = isCurrent ? Math.round(2 * itemView.getResources().getDisplayMetrics().density) : 0;
+            int strokeColor = androidx.core.content.ContextCompat.getColor(itemView.getContext(), R.color.status_info);
+            if (cardView != null) {
+                cardView.setStrokeWidth(strokeWidth);
+                cardView.setStrokeColor(strokeColor);
+            }
+
             if (isSelectionMode) {
                 checkBox.setVisibility(View.VISIBLE);
                 checkBox.setChecked(isSelected);
@@ -273,6 +296,7 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
                     return true;
                 });
             }
+            btnMore.setOnClickListener(null);
         }
 
         private void applyLayoutDensity() {
@@ -310,7 +334,10 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
              }
              
              tvLatency.setText(status.latency + " ms");
-             ivStatus.setImageTintList(android.content.res.ColorStateList.valueOf(status.isOnline ? 0xFF4CAF50 : 0xFFF44336));
+             int statusColor = status.isOnline
+                     ? androidx.core.content.ContextCompat.getColor(itemView.getContext(), R.color.status_success)
+                     : androidx.core.content.ContextCompat.getColor(itemView.getContext(), R.color.status_error);
+             ivStatus.setImageTintList(android.content.res.ColorStateList.valueOf(statusColor));
              
              tvCores.setText(status.cpuCores + " Cores");
              tvMemTotal.setText(status.totalMem);

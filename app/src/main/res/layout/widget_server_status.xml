@@ -39,7 +39,7 @@
             android:layout_width="12dp"
             android:layout_height="12dp"
             android:src="@drawable/circle_bg"
-            android:tint="#4CAF50" />
+            android:tint="@color/status_success" />
     </LinearLayout>
 
     <TextView
@@ -87,7 +87,7 @@
                 android:layout_marginTop="4dp"
                 android:max="100"
                 android:progress="0"
-                android:progressTint="#2196F3" />
+                android:progressTint="@color/status_info" />
 
             <TextView
                 android:id="@+id/widget_text_cpu"
@@ -124,7 +124,7 @@
                 android:layout_marginTop="4dp"
                 android:max="100"
                 android:progress="0"
-                android:progressTint="#FF9800" />
+                android:progressTint="@color/status_warning" />
 
             <TextView
                 android:id="@+id/widget_text_mem"

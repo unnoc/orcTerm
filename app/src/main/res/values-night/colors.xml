@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Status colors (Dark theme) -->
+    <color name="status_success">#81C784</color>
+    <color name="status_warning">#FFB74D</color>
+    <color name="status_info">#64B5F6</color>
+    <color name="status_error">#EF9A9A</color>
+    <color name="status_neutral">#BDBDBD</color>
+</resources>

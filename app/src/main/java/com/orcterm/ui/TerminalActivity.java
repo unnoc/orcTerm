@@ -19,6 +19,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.view.WindowInsetsController;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -30,6 +31,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -113,6 +115,20 @@ public class TerminalActivity extends AppCompatActivity {
     private static final String PREF_LAST_KEY_PATH = "terminal_last_key_path";
     private static final int MAX_HISTORY = 50;
 
+    private static class ConnectionParams {
+        String host;
+        int port;
+        String user;
+        String password;
+        int authType;
+        String keyPath;
+    }
+
+    private boolean hostScoped;
+    private String scopedHost;
+    private String scopedUser;
+    private int scopedPort;
+
     // 默认配色方案 (标准 16 色)
     private static final int[] SCHEME_DEFAULT = {
         0xFF000000, 0xFFCD0000, 0xFF00CD00, 0xFFCDCD00, 0xFF0000EE, 0xFFCD00CD, 0xFF00CDCD, 0xFFE5E5E5,
@@ -195,6 +211,9 @@ public class TerminalActivity extends AppCompatActivity {
     private LinearLayout keyboardControlBar;
     private TextView tvKeyboardStatus;
     private MaterialButton btnShowKeyboardOptions;
+    private TextView terminalTitle;
+    private LinearLayout terminalEmptyState;
+    private MaterialButton terminalEmptyAction;
 
     // 数据模型
     private final List<TerminalContainer> containers = new ArrayList<>();
@@ -430,6 +449,13 @@ public class TerminalActivity extends AppCompatActivity {
         btnAddContainer = findViewById(R.id.btn_add_container);
         inputCommand = findViewById(R.id.input_command);
         keypadView = findViewById(R.id.keypad_view);
+        keyboardControlBar = findViewById(R.id.keyboard_control_bar);
+        tvKeyboardStatus = findViewById(R.id.tv_keyboard_status);
+        btnToggleKeypad = findViewById(R.id.btn_toggle_keypad);
+        btnShowKeyboardOptions = findViewById(R.id.btn_keyboard_options);
+        terminalTitle = findViewById(R.id.terminal_title);
+        terminalEmptyState = findViewById(R.id.terminal_empty_state);
+        terminalEmptyAction = findViewById(R.id.terminal_empty_action);
         terminalPrefs = getSharedPreferences(PREF_APP, MODE_PRIVATE);
         int themeIndex = terminalPrefs.getInt("terminal_theme_index", 0);
         if (themeIndex == 1) currentScheme = SCHEME_SOLARIZED_DARK;
@@ -482,6 +508,29 @@ public class TerminalActivity extends AppCompatActivity {
         }
         keypadVisible = terminalPrefs.getBoolean(PREF_KEYPAD_VISIBLE, true);
         keypadView.setVisibility(keypadVisible ? View.VISIBLE : View.GONE);
+        if (keyboardControlBar != null) {
+            keyboardControlBar.setVisibility(View.VISIBLE);
+        }
+        if (tvKeyboardStatus != null) {
+            tvKeyboardStatus.setText(keypadVisible ? getString(R.string.terminal_keyboard_status_shown)
+                    : getString(R.string.terminal_keyboard_status_hidden));
+        }
+        if (btnToggleKeypad != null) {
+            btnToggleKeypad.setText(keypadVisible ? getString(R.string.terminal_keyboard_toggle_hide)
+                    : getString(R.string.terminal_keyboard_toggle_show));
+            btnToggleKeypad.setOnClickListener(v -> toggleKeypadVisibility());
+        }
+        int layoutMode = terminalPrefs.getInt("keyboard_layout_option", 0);
+        keypadView.setLayoutMode(layoutMode);
+        keypadView.setLayoutChangeListener(mode -> {
+            terminalPrefs.edit().putInt("keyboard_layout_option", mode).apply();
+            String[] layouts = {"标准", "编程", "服务器管理"};
+            Toast.makeText(this, "已切换键盘布局: " + layouts[mode], Toast.LENGTH_SHORT).show();
+        });
+        if (terminalEmptyAction != null) {
+            terminalEmptyAction.setOnClickListener(v -> showCreateContainerDialog());
+        }
+        updateTerminalTitle();
         loadKeypadMappingFromPrefs();
         keypadView.setCustomMapping(keypadMapping);
         keypadView.setLongClickListener((label, value) -> {
@@ -522,6 +571,12 @@ public class TerminalActivity extends AppCompatActivity {
         password = getIntent().getStringExtra("password");
         authType = getIntent().getIntExtra("auth_type", 0);
         keyPath = getIntent().getStringExtra("key_path");
+        if (!TextUtils.isEmpty(hostname)) {
+            hostScoped = true;
+            scopedHost = hostname;
+            scopedUser = username;
+            scopedPort = port;
+        }
         initialCommand = getIntent().getStringExtra("initial_command");
         if (initialCommand == null) {
             initialCommand = getIntent().getStringExtra("initialCommand");
@@ -674,6 +729,15 @@ public class TerminalActivity extends AppCompatActivity {
              }
              
              if (!found) {
+                 SessionInfo info = findSessionInfoForHost(hostname, port, username);
+                 if (info != null) {
+                     TerminalContainer restored = ensureContainerForSession(info);
+                     if (restored != null) {
+                         setActiveContainer(restored);
+                         refreshVisibleContainers();
+                         return;
+                     }
+                 }
                  // 如果不存在，创建新容器
                  long newId = nextContainerId++;
                  TerminalContainer newContainer = createContainerInternal(hostname, currentGroup, newId);
@@ -773,12 +837,19 @@ public class TerminalActivity extends AppCompatActivity {
     private void toggleKeypadVisibility() {
         keypadVisible = !keypadVisible;
         keypadView.setVisibility(keypadVisible ? View.VISIBLE : View.GONE);
-        keyboardControlBar.setVisibility(keypadVisible ? View.VISIBLE : View.GONE);
+        if (keyboardControlBar != null) {
+            keyboardControlBar.setVisibility(View.VISIBLE);
+        }
         terminalPrefs.edit().putBoolean(PREF_KEYPAD_VISIBLE, keypadVisible).apply();
         
         // 更新键盘状态文本
         if (tvKeyboardStatus != null) {
-            tvKeyboardStatus.setText(keypadVisible ? "键盘已显示" : "键盘已隐藏");
+            tvKeyboardStatus.setText(keypadVisible ? getString(R.string.terminal_keyboard_status_shown)
+                    : getString(R.string.terminal_keyboard_status_hidden));
+        }
+        if (btnToggleKeypad != null) {
+            btnToggleKeypad.setText(keypadVisible ? getString(R.string.terminal_keyboard_toggle_hide)
+                    : getString(R.string.terminal_keyboard_toggle_show));
         }
         
         if (keypadVisible) {
@@ -801,6 +872,9 @@ public class TerminalActivity extends AppCompatActivity {
         List<TerminalContainer> pinned = new ArrayList<>();
         List<TerminalContainer> normal = new ArrayList<>();
         for (TerminalContainer container : containers) {
+            if (!matchesScopedContainer(container)) {
+                continue;
+            }
             if (container.pinned) {
                 pinned.add(container);
             } else {
@@ -810,11 +884,8 @@ public class TerminalActivity extends AppCompatActivity {
         visibleContainers.addAll(pinned);
         visibleContainers.addAll(normal);
         containerAdapter.notifyDataSetChanged();
+        updateTerminalEmptyState();
         if (visibleContainers.isEmpty()) {
-            // 如果分组为空，自动创建一个默认容器
-            TerminalContainer created = createContainerInternal(defaultContainerName(), currentGroup, nextContainerId++);
-            setActiveContainer(created);
-            refreshVisibleContainers();
             return;
         }
         if (activeContainer == null || !activeContainer.group.equals(currentGroup)) {
@@ -824,6 +895,15 @@ public class TerminalActivity extends AppCompatActivity {
 
     private String defaultContainerName() {
         if (!TextUtils.isEmpty(hostname)) {
+            int count = 0;
+            for (TerminalContainer container : containers) {
+                if (container.session != null && TextUtils.equals(hostname, container.session.getHost())) {
+                    count++;
+                }
+            }
+            if (count > 0) {
+                return hostname + " (" + (count + 1) + ")";
+            }
             return hostname;
         }
         return "容器 " + (containers.size() + 1);
@@ -891,10 +971,174 @@ public class TerminalActivity extends AppCompatActivity {
     // --- 对话框辅助方法 ---
 
     private void showCreateContainerDialog() {
+        if (TextUtils.isEmpty(hostname) || TextUtils.isEmpty(username)) {
+            Toast.makeText(this, "请先选择主机再创建会话", Toast.LENGTH_SHORT).show();
+            return;
+        }
         String name = defaultContainerName();
-        TerminalContainer container = createContainerInternal(name, currentGroup, nextContainerId++);
+        TerminalContainer container = createContainerInternal(name, currentGroup, nextContainerId++, buildParamsFromCurrent());
         refreshVisibleContainers();
         setActiveContainer(container);
+    }
+
+    private ConnectionParams buildParamsFromCurrent() {
+        ConnectionParams params = new ConnectionParams();
+        params.host = hostname;
+        params.port = port;
+        params.user = username;
+        params.password = password;
+        params.authType = authType;
+        params.keyPath = keyPath;
+        return params;
+    }
+
+    private ConnectionParams buildParamsFromInfo(SessionInfo info) {
+        ConnectionParams params = new ConnectionParams();
+        if (info == null) return params;
+        params.host = info.hostname;
+        params.port = info.port;
+        params.user = info.username;
+        params.password = info.password;
+        params.authType = info.authType;
+        params.keyPath = info.keyPath;
+        return params;
+    }
+
+    private ConnectionParams buildParamsForContainer(TerminalContainer container) {
+        SessionInfo info = findSessionInfoById(container != null ? container.id : -1);
+        ConnectionParams params = buildParamsFromInfo(info);
+        if (container != null && container.session != null) {
+            params.host = container.session.getHost();
+            params.port = container.session.getPort();
+            params.user = container.session.getUsername();
+            params.password = container.session.getPassword();
+            params.authType = container.session.getAuthType();
+            params.keyPath = container.session.getKeyPath();
+        }
+        return params;
+    }
+
+    private TerminalContainer findContainerForHost(String host, int port, String user) {
+        for (TerminalContainer container : containers) {
+            TerminalSession session = container.session;
+            if (session == null) continue;
+            if (TextUtils.equals(host, session.getHost())
+                    && port == session.getPort()
+                    && TextUtils.equals(user, session.getUsername())) {
+                return container;
+            }
+        }
+        return null;
+    }
+
+    private TerminalSession findSharedSessionForHost(String host, int port, String user) {
+        TerminalContainer existing = findContainerForHost(host, port, user);
+        if (existing != null && existing.session != null) {
+            return existing.session;
+        }
+        for (SessionInfo info : SessionManager.getInstance().getSessions()) {
+            if (info == null) continue;
+            if (info.port != port) continue;
+            if (!TextUtils.equals(host, info.hostname)) continue;
+            if (!TextUtils.equals(user, info.username)) continue;
+            TerminalSession session = SessionManager.getInstance().getTerminalSession(info.id);
+            if (session != null) return session;
+        }
+        return null;
+    }
+
+    private SessionInfo findSessionInfoForHost(String host, int port, String user) {
+        for (SessionInfo info : SessionManager.getInstance().getSessions()) {
+            if (info == null) continue;
+            if (info.port != port) continue;
+            if (!TextUtils.equals(host, info.hostname)) continue;
+            if (!TextUtils.equals(user, info.username)) continue;
+            return info;
+        }
+        return null;
+    }
+
+    private SessionInfo findSessionInfoById(long id) {
+        if (id <= 0) return null;
+        for (SessionInfo info : SessionManager.getInstance().getSessions()) {
+            if (info != null && info.id == id) {
+                return info;
+            }
+        }
+        return null;
+    }
+
+    private boolean matchesScopedInfo(SessionInfo info) {
+        if (!hostScoped || info == null) return true;
+        if (!TextUtils.equals(scopedHost, info.hostname)) return false;
+        if (scopedPort > 0 && info.port != scopedPort) return false;
+        return TextUtils.equals(scopedUser, info.username);
+    }
+
+    private boolean matchesScopedContainer(TerminalContainer container) {
+        if (!hostScoped || container == null) return true;
+        if (container.session != null) {
+            if (!TextUtils.equals(scopedHost, container.session.getHost())) return false;
+            if (scopedPort > 0 && container.session.getPort() != scopedPort) return false;
+            return TextUtils.equals(scopedUser, container.session.getUsername());
+        }
+        return matchesScopedInfo(findSessionInfoById(container.id));
+    }
+
+    private boolean hasOtherContainersForSession(TerminalSession session, TerminalContainer exclude) {
+        if (session == null) return false;
+        for (TerminalContainer container : containers) {
+            if (container == exclude) continue;
+            if (container.session == session) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void removeSessionEntriesForSession(TerminalSession session) {
+        if (session == null) return;
+        List<SessionInfo> infos = SessionManager.getInstance().getSessions();
+        for (SessionInfo info : infos) {
+            TerminalSession mapped = SessionManager.getInstance().getTerminalSession(info.id);
+            if (mapped == session) {
+                SessionManager.getInstance().removeSession(info.id);
+            }
+        }
+    }
+
+    private void syncConnectionParamsFromContainer(TerminalContainer container) {
+        if (container == null) return;
+        if (container.session != null) {
+            hostname = container.session.getHost();
+            port = container.session.getPort();
+            username = container.session.getUsername();
+            password = container.session.getPassword();
+            authType = container.session.getAuthType();
+            keyPath = container.session.getKeyPath();
+            persistConnectionParams();
+            return;
+        }
+        SessionInfo info = findSessionInfoById(container.id);
+        if (info != null) {
+            hostname = info.hostname;
+            port = info.port;
+            username = info.username;
+            password = info.password;
+            authType = info.authType;
+            keyPath = info.keyPath;
+            persistConnectionParams();
+        }
+    }
+
+    private TerminalContainer ensureContainerForSession(SessionInfo info) {
+        if (info == null) return null;
+        for (TerminalContainer container : containers) {
+            if (container.id == info.id) {
+                return container;
+            }
+        }
+        return createContainerInternal(info.name, currentGroup, info.id, buildParamsFromInfo(info));
     }
 
     private void showRenameContainerDialog(TerminalContainer container) {
@@ -919,6 +1163,10 @@ public class TerminalActivity extends AppCompatActivity {
      * 初始化 Session 和 View，并添加到界面。
      */
     private TerminalContainer createContainerInternal(String name, String group, long id) {
+        return createContainerInternal(name, group, id, buildParamsFromCurrent());
+    }
+
+    private TerminalContainer createContainerInternal(String name, String group, long id, ConnectionParams params) {
         TerminalContainer container = new TerminalContainer();
         container.id = id;
         container.name = name;
@@ -927,54 +1175,90 @@ public class TerminalActivity extends AppCompatActivity {
         container.commandHistory = new ArrayList<>();
 
         // 初始化会话
+        ConnectionParams resolved = params != null ? params : buildParamsFromCurrent();
         TerminalSession session = SessionManager.getInstance().getTerminalSession(id);
+        if (session == null && !TextUtils.isEmpty(resolved.host)) {
+            session = findSharedSessionForHost(resolved.host, resolved.port, resolved.user);
+        }
         boolean isNewSession = (session == null);
-        
+
         if (isNewSession) {
-            session = new TerminalSession();
-            session.setHostKeyVerifier(createHostKeyVerifier());
-            session.setEmulator(new TerminalEmulator(80, 24));
-            long sharedHandle = SessionManager.getInstance().getAndRemoveSharedHandle(id);
-            if (sharedHandle != 0) {
-                try {
-                    session.attachExistingSshHandle(sharedHandle, hostname, port, username, password, authType, keyPath);
-                } catch (Exception e) {
-                    session.connect(hostname, port, username, password, authType, keyPath);
+            boolean hasParams = !TextUtils.isEmpty(resolved.host) && !TextUtils.isEmpty(resolved.user);
+            if (hasParams) {
+                SessionInfo existingInfo = findSessionInfoForHost(resolved.host, resolved.port, resolved.user);
+                session = new TerminalSession();
+                session.setHostKeyVerifier(createHostKeyVerifier());
+                long sharedHandle = 0;
+                if (existingInfo != null) {
+                    sharedHandle = SessionManager.getInstance().getAndRemoveSharedHandle(existingInfo.id);
                 }
-            } else {
-                session.connect(hostname, port, username, password, authType, keyPath);
+                if (sharedHandle != 0) {
+                    try {
+                        session.attachExistingSshHandle(sharedHandle, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
+                    } catch (Exception e) {
+                        session.connect(resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
+                    }
+                } else {
+                    session.connect(resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
+                }
+                SessionManager.getInstance().upsertSession(
+                    new SessionInfo(container.id, container.name, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath, false),
+                    session
+                );
+                if (existingInfo != null && existingInfo.id != container.id) {
+                    SessionManager.getInstance().upsertSession(
+                        new SessionInfo(existingInfo.id, existingInfo.name, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath, false),
+                        session
+                    );
+                }
             }
-            SessionManager.getInstance().upsertSession(new SessionInfo(container.id, container.name, hostname, port, username, password, authType, keyPath, false), session);
-        } else if (session.getEmulator() == null) {
-             session.setEmulator(new TerminalEmulator(80, 24));
+        } else {
+            container.connected = session.isConnected();
+            String infoHost = !TextUtils.isEmpty(resolved.host) ? resolved.host : session.getHost();
+            int infoPort = !TextUtils.isEmpty(resolved.host) ? resolved.port : session.getPort();
+            String infoUser = !TextUtils.isEmpty(resolved.host) ? resolved.user : session.getUsername();
+            String infoPass = !TextUtils.isEmpty(resolved.host) ? resolved.password : session.getPassword();
+            int infoAuth = !TextUtils.isEmpty(resolved.host) ? resolved.authType : session.getAuthType();
+            String infoKey = !TextUtils.isEmpty(resolved.host) ? resolved.keyPath : session.getKeyPath();
+            SessionInfo existingInfo = findSessionInfoForHost(infoHost, infoPort, infoUser);
+            if (!TextUtils.isEmpty(infoHost) && (existingInfo == null || existingInfo.id == container.id)) {
+                SessionManager.getInstance().upsertSession(
+                    new SessionInfo(
+                        container.id,
+                        container.name,
+                        infoHost,
+                        infoPort,
+                        infoUser,
+                        infoPass,
+                        infoAuth,
+                        infoKey,
+                        container.connected
+                    ),
+                    session
+                );
+            }
         }
-        if (!isNewSession) {
-            SessionManager.getInstance().upsertSession(
-                new SessionInfo(
-                    container.id,
-                    container.name,
-                    session.getHost(),
-                    session.getPort(),
-                    session.getUsername(),
-                    session.getPassword(),
-                    session.getAuthType(),
-                    session.getKeyPath(),
-                    container.connected
-                ),
-                session
-            );
+
+        if (session != null) {
+            ContainerSessionListener listener = new ContainerSessionListener(container);
+            session.addListener(listener);
+            container.sessionListener = listener;
         }
-        
-        session.setListener(new ContainerSessionListener(container));
         container.session = session;
 
         // 初始化视图
         TerminalView view = new TerminalView(this);
-        view.attachEmulator(session.getEmulator());
+        TerminalEmulator emulator = new TerminalEmulator(80, 24);
+        container.emulator = emulator;
+        view.attachEmulator(emulator);
         view.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         view.setFontSize(currentFontSize);
         view.setColorScheme(getEffectiveScheme());
-        view.setOnResizeListener((cols, rows) -> container.session.resize(cols, rows));
+        view.setOnResizeListener((cols, rows) -> {
+            if (container.session != null) {
+                container.session.resize(cols, rows);
+            }
+        });
         view.setLineHeightMultiplier(currentLineHeight);
         view.setLetterSpacing(currentLetterSpacing);
         Typeface tf = currentFontFamily == 0 ? Typeface.MONOSPACE : Typeface.SANS_SERIF;
@@ -1069,6 +1353,9 @@ public class TerminalActivity extends AppCompatActivity {
         containerHost.addView(view);
 
         containers.add(container);
+        if (id >= nextContainerId) {
+            nextContainerId = id + 1;
+        }
         return container;
     }
 
@@ -1078,6 +1365,10 @@ public class TerminalActivity extends AppCompatActivity {
                 continue;
             }
             TerminalSession session = container.session;
+            SessionInfo existing = findSessionInfoForHost(session.getHost(), session.getPort(), session.getUsername());
+            if (existing != null && existing.id != container.id) {
+                continue;
+            }
             SessionManager.getInstance().upsertSession(
                 new SessionInfo(
                     container.id,
@@ -1099,6 +1390,9 @@ public class TerminalActivity extends AppCompatActivity {
         if (sessions.isEmpty()) return;
 
         for (SessionInfo info : sessions) {
+             if (hostScoped && !matchesScopedInfo(info)) {
+                 continue;
+             }
              boolean exists = false;
              for (TerminalContainer c : containers) {
                  if (c.id == info.id) {
@@ -1107,10 +1401,7 @@ public class TerminalActivity extends AppCompatActivity {
                  }
              }
              if (!exists) {
-                 createContainerInternal(info.name, "Default", info.id);
-                 if (info.id >= nextContainerId) {
-                     nextContainerId = info.id + 1;
-                 }
+                 createContainerInternal(info.name, "Default", info.id, buildParamsFromInfo(info));
              }
         }
     }
@@ -1216,6 +1507,7 @@ public class TerminalActivity extends AppCompatActivity {
             .setTitle("键盘布局")
             .setSingleChoiceItems(layouts, currentLayout, (dialog, which) -> {
                 terminalPrefs.edit().putInt("keyboard_layout_option", which).apply();
+                keypadView.setLayoutMode(which);
                 dialog.dismiss();
                 // 这里可以重新加载键盘布局
                 Toast.makeText(this, "已更新键盘布局: " + layouts[which], Toast.LENGTH_SHORT).show();
@@ -1231,6 +1523,8 @@ public class TerminalActivity extends AppCompatActivity {
             .setMessage("确定要重置键盘布局到默认状态吗？")
             .setPositiveButton("确定", (dialog, which) -> {
                 // 这里可以重置键盘的自定义设置
+                terminalPrefs.edit().putInt("keyboard_layout_option", 0).apply();
+                keypadView.setLayoutMode(0);
                 Toast.makeText(this, "键盘布局已重置", Toast.LENGTH_SHORT).show();
             })
             .setNegativeButton("取消", null)
@@ -1265,11 +1559,17 @@ public class TerminalActivity extends AppCompatActivity {
 
     private void closeContainer(TerminalContainer container) {
         containers.remove(container);
-        SessionManager.getInstance().removeSession(container.id);
         visibleContainers.remove(container);
         containerHost.removeView(container.view);
-        if (container.session != null) {
-            container.session.disconnect();
+        TerminalSession session = container.session;
+        if (session != null && container.sessionListener != null) {
+            session.removeListener(container.sessionListener);
+            container.sessionListener = null;
+        }
+        SessionManager.getInstance().removeSession(container.id);
+        if (session != null && !hasOtherContainersForSession(session, container)) {
+            removeSessionEntriesForSession(session);
+            session.disconnect();
         }
         if (splitMode && (container == activeContainer || container == splitSecondary)) {
             disableSplitMode();
@@ -1309,11 +1609,36 @@ public class TerminalActivity extends AppCompatActivity {
         }
         containerAdapter.notifyDataSetChanged();
         maybeRunInitialCommand(container);
+        updateTerminalTitle();
+        updateTerminalEmptyState();
+        syncConnectionParamsFromContainer(container);
         
         // 切换容器时确保输入框获得焦点
         if (inputCommand != null) {
             inputCommand.requestFocus();
         }
+    }
+
+    private void updateTerminalEmptyState() {
+        if (terminalEmptyState == null || containerHost == null) return;
+        boolean showEmpty = containers.isEmpty();
+        terminalEmptyState.setVisibility(showEmpty ? View.VISIBLE : View.GONE);
+        if (terminalTitle != null && showEmpty) {
+            terminalTitle.setText(getString(R.string.nav_terminal_title));
+        }
+    }
+
+    private void updateTerminalTitle() {
+        if (terminalTitle == null) return;
+        if (activeContainer == null) {
+            terminalTitle.setText(getString(R.string.nav_terminal_title));
+            return;
+        }
+        String label = activeContainer.name;
+        if (TextUtils.isEmpty(label)) {
+            label = getString(R.string.nav_terminal_title);
+        }
+        terminalTitle.setText(label);
     }
 
     private void maybeRunInitialCommand(TerminalContainer container) {
@@ -1494,7 +1819,12 @@ public class TerminalActivity extends AppCompatActivity {
                     String name = obj.optString("name", defaultContainerName());
                     String group = obj.optString("group", groups.get(0));
                     boolean pinned = obj.optBoolean("pinned", false);
-                    createContainerInternal(name, group, id);
+                    SessionInfo info = findSessionInfoById(id);
+                    ConnectionParams params = info != null ? buildParamsFromInfo(info) : new ConnectionParams();
+                    if (hostScoped && !matchesScopedInfo(info)) {
+                        continue;
+                    }
+                    createContainerInternal(name, group, id, params);
                     if (!containers.isEmpty()) {
                         containers.get(containers.size() - 1).pinned = pinned;
                     }
@@ -1506,9 +1836,7 @@ public class TerminalActivity extends AppCompatActivity {
             }
         }
 
-        if (containers.isEmpty()) {
-            createContainerInternal(defaultContainerName(), groups.get(0), nextContainerId++);
-        }
+        // Do not auto-create a container; allow empty state to guide user.
 
         long activeId = prefs.getLong(PREF_ACTIVE_ID, -1L);
         for (TerminalContainer container : containers) {
@@ -1600,7 +1928,7 @@ public class TerminalActivity extends AppCompatActivity {
                 password = info.password;
                 authType = info.authType;
                 keyPath = info.keyPath;
-                TerminalContainer newContainer = createContainerInternal(info.name, currentGroup, info.id);
+                TerminalContainer newContainer = createContainerInternal(info.name, currentGroup, info.id, buildParamsFromInfo(info));
                 setActiveContainer(newContainer);
                 refreshVisibleContainers();
                 return;
@@ -1613,6 +1941,10 @@ public class TerminalActivity extends AppCompatActivity {
             boolean found = false;
             int newPort = intent.getIntExtra("port", 22);
             String newUsername = intent.getStringExtra("username");
+            hostScoped = true;
+            scopedHost = newHostname;
+            scopedUser = newUsername;
+            scopedPort = newPort;
             
             for (TerminalContainer c : containers) {
                  if (c.session != null && 
@@ -1625,22 +1957,31 @@ public class TerminalActivity extends AppCompatActivity {
                  }
             }
             
-            if (!found) {
-                 // Update connection params
-                 hostname = newHostname;
-                 port = newPort;
-                 username = newUsername;
-                 password = intent.getStringExtra("password");
-                 authType = intent.getIntExtra("auth_type", 0);
-                 keyPath = intent.getStringExtra("key_path");
+        if (!found) {
+             SessionInfo info = findSessionInfoForHost(newHostname, newPort, newUsername);
+             if (info != null) {
+                 TerminalContainer restored = ensureContainerForSession(info);
+                 if (restored != null) {
+                     setActiveContainer(restored);
+                     refreshVisibleContainers();
+                     return;
+                 }
+             }
+             // Update connection params
+             hostname = newHostname;
+             port = newPort;
+             username = newUsername;
+             password = intent.getStringExtra("password");
+             authType = intent.getIntExtra("auth_type", 0);
+             keyPath = intent.getStringExtra("key_path");
                  
-                 // Create new container
-                 long newId = nextContainerId++;
-                 TerminalContainer newContainer = createContainerInternal(hostname, currentGroup, newId);
-                 setActiveContainer(newContainer);
-                 refreshVisibleContainers();
-            }
+             // Create new container
+             long newId = nextContainerId++;
+             TerminalContainer newContainer = createContainerInternal(hostname, currentGroup, newId, buildParamsFromCurrent());
+             setActiveContainer(newContainer);
+             refreshVisibleContainers();
         }
+    }
     }
 
     @Override
@@ -1651,8 +1992,9 @@ public class TerminalActivity extends AppCompatActivity {
             // SessionManager.getInstance().clearSessions();
             for (TerminalContainer container : containers) {
                 // Detach listeners but keep session alive
-                if (container.session != null) {
-                    container.session.setListener(null);
+                if (container.session != null && container.sessionListener != null) {
+                    container.session.removeListener(container.sessionListener);
+                    container.sessionListener = null;
                 }
             }
         }
@@ -1994,6 +2336,8 @@ public class TerminalActivity extends AppCompatActivity {
         boolean pinned;
         boolean connected;
         TerminalSession session;
+        TerminalSession.SessionListener sessionListener;
+        TerminalEmulator emulator;
         TerminalView view;
         StringBuilder inputBuffer;
         List<CommandEntry> commandHistory;
@@ -2055,9 +2399,9 @@ public class TerminalActivity extends AppCompatActivity {
 
     @Override
     public void onDataReceived(String data) {
-        // Data is already written to emulator by TerminalSession
-        // Just notify view to redraw
-        runOnUiThread(() -> container.view.notifyScreenUpdate());
+        if (container.view != null) {
+            container.view.append(data);
+        }
         
         // 记录会话输出到日志
         if (sessionLoggingEnabled) {
@@ -2081,42 +2425,116 @@ public class TerminalActivity extends AppCompatActivity {
         @NonNull
         @Override
         public ContainerViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            int padding = (int) (6 * parent.getResources().getDisplayMetrics().density);
+            int padding = (int) (8 * parent.getResources().getDisplayMetrics().density);
+            int dotSize = (int) (7 * parent.getResources().getDisplayMetrics().density);
+            int minWidth = (int) (130 * parent.getResources().getDisplayMetrics().density);
+            int statusPadH = (int) (5 * parent.getResources().getDisplayMetrics().density);
+            int statusPadV = (int) (2 * parent.getResources().getDisplayMetrics().density);
+
             LinearLayout layout = new LinearLayout(parent.getContext());
-            layout.setOrientation(LinearLayout.HORIZONTAL);
+            layout.setOrientation(LinearLayout.VERTICAL);
             layout.setGravity(Gravity.CENTER_VERTICAL);
-            layout.setPadding(padding * 2, padding, padding * 2, padding);
+            layout.setPadding(padding, padding, padding, padding);
+            layout.setMinimumWidth(minWidth);
             RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.setMargins(0, 0, padding, 0);
             layout.setLayoutParams(lp);
 
+            LinearLayout row = new LinearLayout(parent.getContext());
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+
+            ImageView statusView = new ImageView(parent.getContext());
+            statusView.setImageResource(R.drawable.bg_status_indicator);
+            LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dotSize, dotSize);
+            dotParams.setMarginEnd(padding / 2);
+            row.addView(statusView, dotParams);
+
             TextView titleView = new TextView(parent.getContext());
-            titleView.setTextColor(0xFFFFFFFF);
+            titleView.setTextColor(ContextCompat.getColor(parent.getContext(), R.color.terminal_key_text));
             titleView.setTextSize(12);
+            titleView.setTypeface(null, Typeface.BOLD);
             titleView.setSingleLine(true);
             titleView.setEllipsize(TextUtils.TruncateAt.END);
-            layout.addView(titleView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            row.addView(titleView, titleParams);
 
             TextView closeView = new TextView(parent.getContext());
             closeView.setText("×");
-            closeView.setTextColor(0xFFB0B0B0);
-            closeView.setTextSize(12);
-            closeView.setPadding(padding, 0, 0, 0);
-            layout.addView(closeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            closeView.setTextColor(ContextCompat.getColor(parent.getContext(), R.color.terminal_key_text));
+            closeView.setTextSize(13);
+            closeView.setPadding(padding / 2, 0, 0, 0);
+            row.addView(closeView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-            return new ContainerViewHolder(layout, titleView, closeView);
+            LinearLayout rowBottom = new LinearLayout(parent.getContext());
+            rowBottom.setOrientation(LinearLayout.HORIZONTAL);
+            rowBottom.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams bottomParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            bottomParams.topMargin = padding / 3;
+            rowBottom.setLayoutParams(bottomParams);
+
+            TextView subView = new TextView(parent.getContext());
+            subView.setTextColor(ContextCompat.getColor(parent.getContext(), R.color.terminal_key_text));
+            subView.setTextSize(10);
+            subView.setSingleLine(true);
+            subView.setEllipsize(TextUtils.TruncateAt.END);
+            subView.setAlpha(0.7f);
+            LinearLayout.LayoutParams subParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            rowBottom.addView(subView, subParams);
+
+            TextView statusText = new TextView(parent.getContext());
+            statusText.setTextSize(9);
+            statusText.setPadding(statusPadH, statusPadV, statusPadH, statusPadV);
+            statusText.setSingleLine(true);
+            statusText.setEllipsize(TextUtils.TruncateAt.END);
+            rowBottom.addView(statusText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            layout.addView(row);
+            layout.addView(rowBottom);
+
+            return new ContainerViewHolder(layout, titleView, subView, closeView, statusView, statusText);
         }
 
         @Override
         public void onBindViewHolder(@NonNull ContainerViewHolder holder, int position) {
             TerminalContainer container = visibleContainers.get(position);
-            String title = TextUtils.isEmpty(hostname) ? container.name : hostname;
+            String hostLine = buildHostLine(container);
+            String title = TextUtils.isEmpty(container.name) ? hostLine : container.name;
             holder.titleView.setText(title);
+            if (!TextUtils.isEmpty(hostLine) && !hostLine.equals(title)) {
+                holder.subView.setVisibility(View.VISIBLE);
+                holder.subView.setText(hostLine);
+            } else {
+                holder.subView.setVisibility(View.GONE);
+                holder.subView.setText("");
+            }
             GradientDrawable bg = new GradientDrawable();
-            int radius = (int) (12 * holder.itemView.getResources().getDisplayMetrics().density);
+            int radius = (int) (14 * holder.itemView.getResources().getDisplayMetrics().density);
             bg.setCornerRadius(radius);
-            bg.setColor(container == activeContainer ? 0xFF3A3A3A : 0xFF2A2A2A);
+            int activeColor = ContextCompat.getColor(holder.itemView.getContext(), R.color.terminal_key_bg_active);
+            int inactiveColor = ContextCompat.getColor(holder.itemView.getContext(), R.color.terminal_key_bg);
+            bg.setColor(container == activeContainer ? activeColor : inactiveColor);
+            int strokeWidth = (int) (1 * holder.itemView.getResources().getDisplayMetrics().density);
             holder.itemView.setBackground(bg);
+            int textColor = ContextCompat.getColor(holder.itemView.getContext(),
+                    container == activeContainer ? R.color.terminal_key_text_active : R.color.terminal_key_text);
+            bg.setStroke(container == activeContainer ? strokeWidth : 0, textColor);
+            holder.titleView.setTextColor(textColor);
+            holder.subView.setTextColor(textColor);
+            holder.subView.setAlpha(container == activeContainer ? 0.85f : 0.7f);
+            holder.closeView.setTextColor(textColor);
+            int dotColor = ContextCompat.getColor(holder.itemView.getContext(),
+                    container.connected ? R.color.status_success : R.color.status_neutral);
+            holder.statusView.setImageTintList(android.content.res.ColorStateList.valueOf(dotColor));
+            String statusText = holder.itemView.getContext().getString(
+                container.connected ? R.string.session_status_connected : R.string.session_status_disconnected);
+            holder.statusText.setText(statusText);
+            holder.statusText.setTextColor(dotColor);
+            GradientDrawable badge = new GradientDrawable();
+            badge.setCornerRadius(radius);
+            int badgeBg = ContextCompat.getColor(holder.itemView.getContext(), R.color.terminal_termius_surface_variant);
+            badge.setColor(badgeBg);
+            holder.statusText.setBackground(badge);
             holder.itemView.setOnClickListener(v -> setActiveContainer(container));
             holder.itemView.setOnLongClickListener(v -> {
                 showContainerMenu(v, container);
@@ -2132,14 +2550,44 @@ public class TerminalActivity extends AppCompatActivity {
 
         class ContainerViewHolder extends RecyclerView.ViewHolder {
             TextView titleView;
+            TextView subView;
             TextView closeView;
+            ImageView statusView;
+            TextView statusText;
 
-            ContainerViewHolder(@NonNull View itemView, TextView titleView, TextView closeView) {
+            ContainerViewHolder(@NonNull View itemView, TextView titleView, TextView subView, TextView closeView, ImageView statusView, TextView statusText) {
                 super(itemView);
                 this.titleView = titleView;
+                this.subView = subView;
                 this.closeView = closeView;
+                this.statusView = statusView;
+                this.statusText = statusText;
             }
         }
+    }
+
+    private String buildHostLine(TerminalContainer container) {
+        if (container == null) return "";
+        String host = null;
+        int port = 0;
+        String user = null;
+        if (container.session != null) {
+            host = container.session.getHost();
+            port = container.session.getPort();
+            user = container.session.getUsername();
+        } else {
+            SessionInfo info = findSessionInfoById(container.id);
+            if (info != null) {
+                host = info.hostname;
+                port = info.port;
+                user = info.username;
+            }
+        }
+        if (TextUtils.isEmpty(host)) return "";
+        if (TextUtils.isEmpty(user)) {
+            return host + ":" + port;
+        }
+        return user + "@" + host + ":" + port;
     }
 
     private void showContainerMenu(View anchor, TerminalContainer container) {
@@ -2200,8 +2648,9 @@ public class TerminalActivity extends AppCompatActivity {
     }
 
     private void duplicateContainer(TerminalContainer source) {
+        if (source == null || source.session == null) return;
         String name = source.name + " 副本";
-        TerminalContainer container = createContainerInternal(name, source.group, nextContainerId++);
+        TerminalContainer container = createContainerInternal(name, source.group, nextContainerId++, buildParamsForContainer(source));
         refreshVisibleContainers();
         setActiveContainer(container);
     }
@@ -2250,16 +2699,53 @@ public class TerminalActivity extends AppCompatActivity {
 
     private void reconnectContainer(TerminalContainer container) {
         try {
-            if (container.session != null) {
-                container.session.disconnect();
+            if (container == null) return;
+            ConnectionParams params = buildParamsForContainer(container);
+            if (TextUtils.isEmpty(params.host) || TextUtils.isEmpty(params.user)) {
+                Toast.makeText(this, "缺少主机信息，无法重连", Toast.LENGTH_SHORT).show();
+                return;
             }
-            container.connected = false;
-            container.view.append("Reconnecting...\r\n");
+
+            TerminalSession oldSession = container.session;
+            List<TerminalContainer> targets = new ArrayList<>();
+            if (oldSession != null) {
+                for (TerminalContainer c : containers) {
+                    if (c.session == oldSession) {
+                        targets.add(c);
+                    }
+                }
+                for (TerminalContainer c : targets) {
+                    if (c.sessionListener != null) {
+                        oldSession.removeListener(c.sessionListener);
+                        c.sessionListener = null;
+                    }
+                }
+                oldSession.disconnect();
+            } else {
+                targets.add(container);
+            }
+
             TerminalSession session = new TerminalSession();
-            session.setListener(new ContainerSessionListener(container));
             session.setHostKeyVerifier(createHostKeyVerifier());
-            session.connect(hostname, port, username, password, authType, keyPath);
-            container.session = session;
+            session.connect(params.host, params.port, params.user, params.password, params.authType, params.keyPath);
+
+            for (TerminalContainer c : targets) {
+                c.connected = false;
+                c.session = session;
+                if (c.view != null && c.emulator != null) {
+                    c.view.attachEmulator(c.emulator);
+                }
+                ContainerSessionListener listener = new ContainerSessionListener(c);
+                session.addListener(listener);
+                c.sessionListener = listener;
+                SessionManager.getInstance().upsertSession(
+                    new SessionInfo(c.id, c.name, params.host, params.port, params.user, params.password, params.authType, params.keyPath, false),
+                    session
+                );
+                if (c.view != null) {
+                    c.view.append("Reconnecting...\r\n");
+                }
+            }
             containerAdapter.notifyDataSetChanged();
         } catch (Exception e) {
             Toast.makeText(this, "重连失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -2269,9 +2755,10 @@ public class TerminalActivity extends AppCompatActivity {
     private void disconnectContainer(TerminalContainer container) {
         if (container.session != null) {
             container.session.disconnect();
-            container.view.append("Disconnected by user.\r\n");
-            container.session = null;
             container.connected = false;
+            if (container.view != null) {
+                container.view.append("Disconnected by user.\r\n");
+            }
             containerAdapter.notifyDataSetChanged();
         }
     }

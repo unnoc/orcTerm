@@ -2391,7 +2391,6 @@ public class SettingsDetailActivity extends AppCompatActivity {
         if (persistentNotificationSwitch == null) return;
         boolean active = prefs.getBoolean("persistent_notification_active", false);
         boolean enabled = prefs.getBoolean("persistent_notification_enabled", false);
-        persistentNotificationSwitch.setEnabled(active);
         persistentNotificationSwitch.setChecked(enabled);
         if (!active) {
             persistentNotificationSummary.setText(getString(R.string.settings_notification_persistent_inactive));

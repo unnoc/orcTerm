@@ -10,16 +10,23 @@
         android:id="@+id/appbar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:animateLayoutChanges="true"
+        android:background="?attr/colorSurface"
         android:theme="@style/Theme.OrcTerm"
+        app:liftOnScroll="true"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <androidx.appcompat.widget.Toolbar
+        <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
+            style="@style/Widget.OrcTerm.TopAppBar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary"
+            android:background="?attr/colorSurface"
+            app:contentInsetStart="0dp"
+            app:contentInsetStartWithNavigation="0dp"
+            app:contentInsetEnd="0dp"
             app:popupTheme="@style/Theme.OrcTerm">
 
             <LinearLayout
@@ -27,49 +34,92 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp">
 
-                <TextView
-                    android:id="@+id/toolbar_title"
+                <LinearLayout
+                    android:id="@+id/toolbar_title_group"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="@android:color/white"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:text="服务器" />
+                    android:orientation="vertical"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/toolbar_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:text="@string/nav_servers_title" />
+
+                    <TextView
+                        android:id="@+id/toolbar_subtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="12sp"
+                        android:text="@string/toolbar_subtitle_placeholder"
+                        android:visibility="gone" />
+                </LinearLayout>
 
                 <View
                     android:layout_width="0dp"
                     android:layout_height="0dp"
                     android:layout_weight="1" />
 
-                <LinearLayout
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/current_server_container"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:padding="4dp"
-                    android:visibility="gone">
+                    android:visibility="gone"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground"
+                    app:cardBackgroundColor="?attr/colorSurfaceVariant"
+                    app:strokeColor="?attr/colorOutline"
+                    app:strokeWidth="1dp"
+                    app:cardCornerRadius="16dp"
+                    app:cardUseCompatPadding="false">
 
-                    <TextView
-                        android:id="@+id/current_server_text"
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textColor="@android:color/white"
-                        android:textSize="14sp"
-                        android:text="选择服务器" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:paddingStart="10dp"
+                        android:paddingEnd="10dp"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="6dp">
 
-                    <ImageView
-                        android:id="@+id/current_server_arrow"
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
-                        android:layout_marginStart="4dp"
-                        android:src="@drawable/ic_action_link"
-                        app:tint="@android:color/white" />
-                </LinearLayout>
+                        <ImageView
+                            android:id="@+id/current_server_icon"
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/ic_action_computer"
+                            app:tint="?attr/colorOnSurfaceVariant" />
+
+                        <TextView
+                            android:id="@+id/current_server_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:textColor="?attr/colorOnSurface"
+                            android:textSize="13sp"
+                            android:text="@string/toolbar_select_server" />
+
+                        <ImageView
+                            android:id="@+id/current_server_arrow"
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:layout_marginStart="4dp"
+                            android:src="@drawable/ic_action_link"
+                            app:tint="?attr/colorOnSurfaceVariant" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
             </LinearLayout>
-        </androidx.appcompat.widget.Toolbar>
+        </com.google.android.material.appbar.MaterialToolbar>
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -88,8 +138,8 @@
         android:layout_height="wrap_content"
         android:background="?attr/colorSurface"
         app:menu="@menu/bottom_nav_menu"
-        app:itemIconTint="?attr/colorOnSurface"
-        app:itemTextColor="?attr/colorOnSurface"
+        app:itemIconTint="@color/bottom_nav_item"
+        app:itemTextColor="@color/bottom_nav_text"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>

@@ -34,7 +34,7 @@
             android:layout_marginStart="8dp"
             android:paddingHorizontal="8dp"
             android:paddingVertical="2dp"
-            android:textSize="11sp"
+        android:textSize="12sp"
             android:textColor="@android:color/white"
             android:background="@drawable/bg_type_history"
             tools:text="历史" />

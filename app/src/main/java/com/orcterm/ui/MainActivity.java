@@ -21,6 +21,7 @@ import androidx.fragment.app.Fragment;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.google.android.material.snackbar.Snackbar;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 import org.json.JSONObject;
@@ -37,6 +38,7 @@ import com.orcterm.ui.nav.ServersFragment;
 import com.orcterm.ui.nav.TerminalFragment;
 import com.orcterm.ui.nav.FilesFragment;
 import com.orcterm.ui.nav.SettingsFragment;
+import com.orcterm.util.AppBackgroundHelper;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,6 +57,8 @@ public class MainActivity extends AppCompatActivity {
     private ExecutorService executor = Executors.newCachedThreadPool();
     private SharedPreferences prefs;
     private boolean autoConnectHandled = false;
+    private int currentPage = 0;
+    private String currentHostLabel = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,9 +78,15 @@ public class MainActivity extends AppCompatActivity {
         // Create adapter
         ViewPagerAdapter adapter = new ViewPagerAdapter(this);
         viewPager.setAdapter(adapter);
+        AppBackgroundHelper.applyFromPrefs(this, binding.getRoot());
 
         // Setup navigation
         bottomNavigationView.setOnItemSelectedListener(item -> {
+            Long currentHostId = navViewModel.getCurrentHostId().getValue();
+            if ((item.getItemId() == R.id.nav_terminal || item.getItemId() == R.id.nav_files) && currentHostId == null) {
+                Snackbar.make(binding.getRoot(), "请先选择主机", Snackbar.LENGTH_SHORT).show();
+                return false;
+            }
             int itemId = item.getItemId();
             if (itemId == R.id.nav_servers) {
                 viewPager.setCurrentItem(0);
@@ -94,6 +104,7 @@ public class MainActivity extends AppCompatActivity {
         viewPager.registerOnPageChangeCallback(new androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {
+                currentPage = position;
                 switch (position) {
                     case 0:
                         bottomNavigationView.setSelectedItemId(R.id.nav_servers);
@@ -108,18 +119,31 @@ public class MainActivity extends AppCompatActivity {
                         bottomNavigationView.setSelectedItemId(R.id.nav_profile);
                         break;
                 }
+                updateToolbarForPage(position);
             }
         });
 
         // Initialize ViewModel
         navViewModel = new ViewModelProvider(this).get(NavViewModel.class);
         navViewModel.getCurrentHostId().observe(this, this::updateBottomNavHost);
+        long currentHostId = prefs.getLong("current_host_id", -1L);
+        if (currentHostId > 0) {
+            navViewModel.setCurrentHostId(currentHostId);
+        }
 
         // Handle intent
         handleIntent(getIntent());
 
         // 启动后自动连接首页主机
         maybeAutoConnectHomeHost(savedInstanceState);
+
+        updateToolbarForPage(0);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        AppBackgroundHelper.applyFromPrefs(this, binding.getRoot());
     }
 
     @Override
@@ -171,16 +195,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 navViewModel.setCurrentHostId(host.id);
-                Intent intent = new Intent(this, TerminalActivity.class);
-                intent.putExtra("host_id", host.id);
-                intent.putExtra("hostname", host.hostname);
-                intent.putExtra("username", host.username);
-                intent.putExtra("port", host.port);
-                intent.putExtra("password", host.password);
-                intent.putExtra("auth_type", host.authType);
-                intent.putExtra("key_path", host.keyPath);
-                intent.putExtra("container_engine", host.containerEngine);
-                startActivity(intent);
+                // Auto-connect should not force navigation to Terminal on app launch.
             });
         });
     }
@@ -189,9 +204,14 @@ public class MainActivity extends AppCompatActivity {
         Menu menu = bottomNavigationView.getMenu();
         MenuItem terminalItem = menu.findItem(R.id.nav_terminal);
         MenuItem filesItem = menu.findItem(R.id.nav_files);
+        boolean enabled = hostId != null;
+        terminalItem.setEnabled(enabled);
+        filesItem.setEnabled(enabled);
         if (hostId == null) {
             terminalItem.setTitle(getString(R.string.nav_terminal_title));
             filesItem.setTitle(getString(R.string.nav_files_title));
+            currentHostLabel = null;
+            updateToolbarForPage(currentPage);
             return;
         }
         executor.execute(() -> {
@@ -200,11 +220,23 @@ public class MainActivity extends AppCompatActivity {
                 if (host == null) {
                     terminalItem.setTitle(getString(R.string.nav_terminal_title));
                     filesItem.setTitle(getString(R.string.nav_files_title));
+                    currentHostLabel = null;
+                    updateToolbarForPage(currentPage);
+                    prefs.edit()
+                        .remove("current_host_id")
+                        .remove("current_host_label")
+                        .remove("current_host_hostname")
+                        .remove("current_host_username")
+                        .remove("current_host_port")
+                        .apply();
+                    navViewModel.setCurrentHostId(null);
                     return;
                 }
                 String label = buildHostLabel(host);
-                terminalItem.setTitle(getString(R.string.nav_terminal_with_host, label));
-                filesItem.setTitle(getString(R.string.nav_files_with_host, label));
+                terminalItem.setTitle(getString(R.string.nav_terminal_title));
+                filesItem.setTitle(getString(R.string.nav_files_title));
+                currentHostLabel = label;
+                updateToolbarForPage(currentPage);
             });
         });
     }
@@ -217,6 +249,58 @@ public class MainActivity extends AppCompatActivity {
         if (TextUtils.isEmpty(username)) return hostname;
         if (TextUtils.isEmpty(hostname)) return username;
         return username + "@" + hostname;
+    }
+
+    private void updateToolbarForPage(int position) {
+        if (binding == null) return;
+        String title;
+        String subtitle = null;
+        boolean showSubtitle = false;
+        boolean showServerChip = false;
+
+        switch (position) {
+            case 0:
+                title = getString(R.string.nav_servers_title);
+                subtitle = getString(R.string.toolbar_subtitle_placeholder);
+                showSubtitle = true;
+                break;
+            case 1:
+                title = getString(R.string.nav_terminal_title);
+                if (!TextUtils.isEmpty(currentHostLabel)) {
+                    showServerChip = true;
+                } else {
+                    subtitle = getString(R.string.toolbar_subtitle_no_host);
+                    showSubtitle = true;
+                }
+                break;
+            case 2:
+                title = getString(R.string.nav_files_title);
+                if (!TextUtils.isEmpty(currentHostLabel)) {
+                    showServerChip = true;
+                } else {
+                    subtitle = getString(R.string.toolbar_subtitle_no_host);
+                    showSubtitle = true;
+                }
+                break;
+            case 3:
+            default:
+                title = getString(R.string.nav_settings_title);
+                showSubtitle = false;
+                break;
+        }
+
+        binding.toolbarTitle.setText(title);
+        binding.toolbarSubtitle.setVisibility(showSubtitle ? View.VISIBLE : View.GONE);
+        if (showSubtitle && subtitle != null) {
+            binding.toolbarSubtitle.setText(subtitle);
+        }
+
+        if (showServerChip && !TextUtils.isEmpty(currentHostLabel)) {
+            binding.currentServerText.setText(currentHostLabel);
+            binding.currentServerContainer.setVisibility(View.VISIBLE);
+        } else {
+            binding.currentServerContainer.setVisibility(View.GONE);
+        }
     }
 
     public void startQrScan() {

@@ -31,6 +31,7 @@ public class SshTransport implements Transport {
     private final ExecutorService forwardExecutor = Executors.newCachedThreadPool();
     private final ConcurrentHashMap<String, Boolean> activeForwards = new ConcurrentHashMap<>();
     private HostKeyVerifier hostKeyVerifier;
+    private int keepaliveIntervalSec = 0;
 
     public SshTransport() {
         this.sshNative = new SshNative();
@@ -52,6 +53,7 @@ public class SshTransport implements Transport {
 
     @Override
     public void connect(String host, int port, String user, String password, int authType, String keyPath) throws Exception {
+        android.util.Log.i("SSH_SESSION", "ssh connect host=" + host + " port=" + port + " user=" + user + " auth=" + authType);
         if (host == null || host.trim().isEmpty()) {
             throw new Exception("Host is empty");
         }
@@ -85,6 +87,7 @@ public class SshTransport implements Transport {
             }
             sshNative.setSessionReadTimeout(sshHandle, readTimeoutSec);
             sshNative.setKeepaliveConfig(sshHandle, keepaliveReply, Math.max(0, keepaliveIntervalSec));
+            this.keepaliveIntervalSec = Math.max(0, keepaliveIntervalSec);
         }
 
         // Host Key Verification
@@ -134,6 +137,7 @@ public class SshTransport implements Transport {
         // 打开 Shell，默认大小，稍后会调整
         sshNative.openShell(sshHandle, 80, 24);
         connected = true;
+        android.util.Log.i("SSH_SESSION", "ssh connected handle=" + sshHandle);
     }
 
     @Override
@@ -145,6 +149,7 @@ public class SshTransport implements Transport {
         }
         connected = false;
         forwardExecutor.shutdownNow();
+        android.util.Log.i("SSH_SESSION", "ssh disconnected");
     }
 
     @Override
@@ -161,7 +166,7 @@ public class SshTransport implements Transport {
         
         // 将读取的数据复制到缓冲区
         System.arraycopy(data, 0, buffer, 0, Math.min(data.length, buffer.length));
-        return data.length;
+        return Math.min(data.length, buffer.length);
     }
 
     @Override
@@ -184,7 +189,12 @@ public class SshTransport implements Transport {
     public void sendKeepalive() {
         if (connected && sshHandle != 0) {
             sshNative.sendKeepalive(sshHandle);
+            android.util.Log.d("SSH_SESSION", "keepalive sent");
         }
+    }
+
+    public int getKeepaliveIntervalSec() {
+        return keepaliveIntervalSec;
     }
 
     // --- 端口转发功能 ---

@@ -89,4 +89,11 @@
     <color name="terminal_key_bg_active">#2E3A4C</color>
     <color name="terminal_key_text">#C9D4E1</color>
     <color name="terminal_key_text_active">#FFFFFF</color>
+
+    <!-- Status colors (UI consistency) -->
+    <color name="status_success">#2E7D32</color>
+    <color name="status_warning">#F57C00</color>
+    <color name="status_info">#0288D1</color>
+    <color name="status_error">#D32F2F</color>
+    <color name="status_neutral">#9E9E9E</color>
 </resources>

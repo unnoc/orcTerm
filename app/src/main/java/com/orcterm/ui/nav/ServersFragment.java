@@ -35,6 +35,7 @@ import com.orcterm.ui.DockerActivity;
 import com.orcterm.ui.SftpActivity;
 import com.orcterm.ui.MainViewModel;
 import com.orcterm.ui.nav.NavViewModel;
+import com.orcterm.util.AppBackgroundHelper;
 import com.orcterm.util.CommandConstants;
 
 import java.util.Collections;
@@ -74,8 +75,10 @@ public class ServersFragment extends Fragment {
     private final Map<Long, Long> monitorHandles = new ConcurrentHashMap<>();
     // Store previous CPU values: [user, nice, system, idle, iowait, irq, softirq, steal]
     private final Map<Long, long[]> prevCpuStats = new ConcurrentHashMap<>();
-    // Store previous Net/Disk values: [timestamp, rx_bytes, tx_bytes, read_bytes, write_bytes]
+    // Store previous Net values: [timestamp, rx_bytes, tx_bytes]
     private final Map<Long, long[]> prevIoStats = new ConcurrentHashMap<>();
+    // Store previous Disk values: [timestamp, read_sectors, write_sectors]
+    private final Map<Long, long[]> prevDiskStats = new ConcurrentHashMap<>();
     
     private SharedPreferences prefs;
     private SharedPreferences.OnSharedPreferenceChangeListener prefListener;
@@ -96,6 +99,7 @@ public class ServersFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        AppBackgroundHelper.applyFromPrefs(requireContext(), view);
         navViewModel = new ViewModelProvider(requireActivity()).get(NavViewModel.class);
         RecyclerView recyclerView = view.findViewById(R.id.recyclerview);
         mAdapter = new HostAdapter(new HostAdapter.HostDiff(),
@@ -144,6 +148,24 @@ public class ServersFragment extends Fragment {
         mHostViewModel.getAllHosts().observe(getViewLifecycleOwner(), hosts -> {
             mAllHosts = new ArrayList<>(hosts);
             filterAndSort();
+            // 如果当前未选择主机且列表非空，默认选择第一个
+            if (navViewModel.getCurrentHostId().getValue() == null && !mAllHosts.isEmpty()) {
+                long savedId = prefs.getLong("current_host_id", -1L);
+                HostEntity selected = null;
+                if (savedId > 0) {
+                    for (HostEntity host : mAllHosts) {
+                        if (host.id == savedId) {
+                            selected = host;
+                            break;
+                        }
+                    }
+                }
+                if (selected == null) {
+                    selected = mAllHosts.get(0);
+                    persistCurrentHost(selected);
+                }
+                navViewModel.setCurrentHostId(selected.id);
+            }
         });
         navViewModel.getCurrentHostId().observe(getViewLifecycleOwner(), id -> {
             mAdapter.setCurrentHostId(id);
@@ -151,6 +173,24 @@ public class ServersFragment extends Fragment {
 
         FloatingActionButton fab = view.findViewById(R.id.fab);
         fab.setOnClickListener(this::showAddOptions);
+
+        View addButton = view.findViewById(R.id.btn_empty_add);
+        if (addButton != null) {
+            addButton.setOnClickListener(v -> {
+                Intent intent = new Intent(requireContext(), AddHostActivity.class);
+                startActivity(intent);
+            });
+        }
+        View scanButton = view.findViewById(R.id.btn_empty_scan);
+        if (scanButton != null) {
+            scanButton.setOnClickListener(v -> {
+                if (getActivity() instanceof com.orcterm.ui.MainActivity) {
+                    ((com.orcterm.ui.MainActivity) getActivity()).startQrScan();
+                } else {
+                    showAddOptions(v);
+                }
+            });
+        }
     }
 
     @Override
@@ -164,6 +204,9 @@ public class ServersFragment extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
+        if (getView() != null) {
+            AppBackgroundHelper.applyFromPrefs(requireContext(), getView());
+        }
         // 首页主机列表是否自动获取信息
         if (isHomeHostListAutoFetchEnabled()) {
             startMonitoring();
@@ -205,6 +248,7 @@ public class ServersFragment extends Fragment {
             monitorHandles.clear();
             prevCpuStats.clear();
             prevIoStats.clear();
+            prevDiskStats.clear();
         });
     }
 
@@ -417,14 +461,15 @@ public class ServersFragment extends Fragment {
              // Field 10 (index 9) = sectors written
              long readSectors = 0;
              long writeSectors = 0;
+             boolean matched = false;
              
              String[] lines = sections[6].split("\n");
              for (String l : lines) {
                  String[] parts = l.trim().split("\\s+");
-                 // Filter for common physical disks (sda, vda, nvme0n1, mmcblk0)
                  if (parts.length >= 10) {
                      String dev = parts[2];
                      if (isPhysicalDisk(dev)) {
+                         matched = true;
                          try {
                              readSectors += Long.parseLong(parts[5]);
                              writeSectors += Long.parseLong(parts[9]);
@@ -432,39 +477,48 @@ public class ServersFragment extends Fragment {
                      }
                  }
              }
+
+             if (!matched) {
+                 for (String l : lines) {
+                     String[] parts = l.trim().split("\\s+");
+                     if (parts.length >= 10) {
+                         String dev = parts[2];
+                         if (isFallbackDisk(dev)) {
+                             matched = true;
+                             try {
+                                 readSectors += Long.parseLong(parts[5]);
+                                 writeSectors += Long.parseLong(parts[9]);
+                             } catch (Exception e) {}
+                         }
+                     }
+                 }
+             }
              
-             // Use prevIoStats but store disk stats in extra slots? 
-             // prevIoStats: [ts, rx, tx, readSec, writeSec]
-             long[] prev = prevIoStats.get(hostId);
+             long[] prev = prevDiskStats.get(hostId);
              if (prev != null) {
                  long timeDelta = status.timestamp - prev[0];
                  if (timeDelta > 0) {
                      // Sector = 512 bytes
-                     long readDelta = (readSectors - prev[3]) * 512;
-                     long writeDelta = (writeSectors - prev[4]) * 512;
+                     long readDelta = (readSectors - prev[1]) * 512;
+                     long writeDelta = (writeSectors - prev[2]) * 512;
                      
                      status.diskRead = formatSize(readDelta * 1000 / timeDelta) + "/s";
                      status.diskWrite = formatSize(writeDelta * 1000 / timeDelta) + "/s";
                  }
              }
              
-             // Update cache
-             if (prev == null) {
-                 prev = new long[5];
-                 // Initialize Net stats to 0 or current? Net logic already put new array.
-                 // Wait, Net logic runs BEFORE this. It put [ts, rx, tx, 0, 0].
-                 // So we should fetch it back.
-             }
-             prev[3] = readSectors;
-             prev[4] = writeSectors;
-             prevIoStats.put(hostId, prev);
+             prevDiskStats.put(hostId, new long[]{status.timestamp, readSectors, writeSectors});
         }
         
         return status;
     }
     
     private boolean isPhysicalDisk(String dev) {
-        return dev.matches("^(sd[a-z]|vd[a-z]|nvme\\d+n\\d+|mmcblk\\d+)$");
+        return dev.matches("^(sd[a-z]|vd[a-z]|xvd[a-z]|nvme\\d+n\\d+|mmcblk\\d+)$");
+    }
+
+    private boolean isFallbackDisk(String dev) {
+        return dev.matches("^(dm-\\d+|md\\d+)$");
     }
     
     private String formatUptime(long sec) {
@@ -583,7 +637,9 @@ public class ServersFragment extends Fragment {
         popup.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case 0:
-                    // 保存首页主机偏好
+                    // 保存当前主机偏好
+                    persistCurrentHost(host);
+                    // 兼容：继续作为首页主机来源
                     String homeLabel = buildHomeHostLabel(host);
                     prefs.edit()
                         .putLong("home_host_id", host.id)
@@ -789,6 +845,18 @@ public class ServersFragment extends Fragment {
         if (TextUtils.isEmpty(username)) return hostname;
         if (TextUtils.isEmpty(hostname)) return username;
         return username + "@" + hostname;
+    }
+
+    private void persistCurrentHost(HostEntity host) {
+        if (host == null) return;
+        String label = buildHomeHostLabel(host);
+        prefs.edit()
+            .putLong("current_host_id", host.id)
+            .putString("current_host_label", label)
+            .putString("current_host_hostname", host.hostname)
+            .putString("current_host_username", host.username)
+            .putInt("current_host_port", host.port)
+            .apply();
     }
 
     private void diagnoseHost(HostEntity host) {

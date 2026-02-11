@@ -8,14 +8,18 @@
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:theme="@style/Theme.OrcTerm.AppBarOverlay">
+        android:animateLayoutChanges="true"
+        android:theme="@style/Theme.OrcTerm.AppBarOverlay"
+        app:liftOnScroll="true">
 
-        <androidx.appcompat.widget.Toolbar
+        <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
+            style="@style/Widget.OrcTerm.TopAppBar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorSurface"
             app:title="进程详情"
+            app:titleTextColor="?attr/colorOnSurface"
             app:popupTheme="@style/Theme.OrcTerm.PopupOverlay" />
     </com.google.android.material.appbar.AppBarLayout>
 

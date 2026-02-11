@@ -8,26 +8,31 @@
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:theme="@style/Theme.OrcTerm.AppBarOverlay">
+        android:animateLayoutChanges="true"
+        android:theme="@style/Theme.OrcTerm.AppBarOverlay"
+        app:liftOnScroll="true">
 
-        <androidx.appcompat.widget.Toolbar
+        <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
+            style="@style/Widget.OrcTerm.TopAppBar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorSurface"
             app:title="Monitor"
             app:subtitle="Realtime - 2s interval"
+            app:titleTextColor="?attr/colorOnSurface"
+            app:subtitleTextColor="?attr/colorOnSurfaceVariant"
             app:popupTheme="@style/Theme.OrcTerm.PopupOverlay">
-             <ImageButton
+            <ImageButton
                 android:id="@+id/btn_refresh"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="end"
                 android:src="@drawable/ic_action_refresh"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                 android:padding="16dp"
-                 app:tint="?attr/colorOnSurface" />
-        </androidx.appcompat.widget.Toolbar>
+                android:padding="16dp"
+                app:tint="?attr/colorOnSurface" />
+        </com.google.android.material.appbar.MaterialToolbar>
 
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -227,7 +232,7 @@
                         android:layout_height="6dp"
                         android:layout_marginTop="12dp"
                         android:progressDrawable="@drawable/progress_rounded"
-                        android:progressTint="#FFB74D"
+                        android:progressTint="@color/status_warning"
                         android:max="100"
                         android:progress="65"/>
 

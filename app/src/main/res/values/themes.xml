@@ -39,4 +39,11 @@
     <style name="Theme.OrcTerm.AppBarOverlay" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
 
     <style name="Theme.OrcTerm.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
+
+    <style name="Widget.OrcTerm.TopAppBar" parent="Widget.MaterialComponents.Toolbar">
+        <item name="android:background">?attr/colorSurface</item>
+        <item name="titleTextColor">?attr/colorOnSurface</item>
+        <item name="subtitleTextColor">?attr/colorOnSurfaceVariant</item>
+        <item name="android:stateListAnimator">@animator/m3_appbar_state_list_animator</item>
+    </style>
 </resources>

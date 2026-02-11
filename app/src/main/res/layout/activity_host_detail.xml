@@ -7,12 +7,14 @@
     android:orientation="vertical"
     android:background="?attr/colorSurface">
 
-    <androidx.appcompat.widget.Toolbar
+    <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
+        style="@style/Widget.OrcTerm.TopAppBar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorSurface"
-        android:elevation="4dp"
+        android:elevation="0dp"
+        android:stateListAnimator="@animator/m3_appbar_state_list_animator"
         app:titleTextColor="?attr/colorOnSurface" />
 
     <androidx.core.widget.NestedScrollView
@@ -364,7 +366,7 @@
                                 android:layout_height="6dp"
                                 android:layout_marginTop="4dp"
                                 android:progressDrawable="@drawable/progress_rounded"
-                                android:progressTint="#FFB74D"
+                                android:progressTint="@color/status_warning"
                                 android:max="100"
                                 android:progress="65"/>
 

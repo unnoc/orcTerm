@@ -6,14 +6,15 @@
     android:orientation="vertical"
     android:background="?attr/colorSurface">
 
-    <androidx.appcompat.widget.Toolbar
+    <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
+        style="@style/Widget.OrcTerm.TopAppBar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:theme="@style/Theme.OrcTerm"
-        android:elevation="4dp"
-        app:titleTextColor="?attr/colorOnPrimary" />
+        android:background="?attr/colorSurface"
+        android:elevation="0dp"
+        android:stateListAnimator="@animator/m3_appbar_state_list_animator"
+        app:titleTextColor="?attr/colorOnSurface" />
 
     <ScrollView
         android:id="@+id/scroll_view"

@@ -1,7 +1,10 @@
 package com.orcterm.ui.nav;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -12,10 +15,12 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.orcterm.R;
+import com.orcterm.core.terminal.TerminalSession;
 import com.orcterm.core.session.SessionInfo;
 import com.orcterm.core.session.SessionManager;
 import com.orcterm.ui.TerminalActivity;
 import com.orcterm.ui.adapter.SessionAdapter;
+import com.orcterm.util.AppBackgroundHelper;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,6 +32,10 @@ public class TerminalFragment extends Fragment implements SessionManager.Session
     private RecyclerView recyclerView;
     private TextView textNoSessions;
     private SessionAdapter adapter;
+    private SharedPreferences prefs;
+    private String currentHost;
+    private String currentUser;
+    private int currentPort;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -36,6 +45,7 @@ public class TerminalFragment extends Fragment implements SessionManager.Session
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        AppBackgroundHelper.applyFromPrefs(requireContext(), view);
         
         recyclerView = view.findViewById(R.id.recycler_sessions);
         textNoSessions = view.findViewById(R.id.text_no_sessions);
@@ -56,6 +66,9 @@ public class TerminalFragment extends Fragment implements SessionManager.Session
     @Override
     public void onResume() {
         super.onResume();
+        if (getView() != null) {
+            AppBackgroundHelper.applyFromPrefs(requireContext(), getView());
+        }
         SessionManager.getInstance().addListener(this);
         updateSessions();
     }
@@ -74,20 +87,53 @@ public class TerminalFragment extends Fragment implements SessionManager.Session
     }
 
     private void updateSessions() {
-        List<SessionInfo> sessions = SessionManager.getInstance().getSessions();
-        List<SessionInfo> activeSessions = new ArrayList<>();
-        for (SessionInfo session : sessions) {
-            if (session.connected) {
-                activeSessions.add(session);
-            }
-        }
-        if (activeSessions.isEmpty()) {
+        loadCurrentHost();
+        if (TextUtils.isEmpty(currentHost) || currentPort <= 0) {
             recyclerView.setVisibility(View.GONE);
             textNoSessions.setVisibility(View.VISIBLE);
+            adapter.setSessions(new ArrayList<>());
+            return;
+        }
+        List<SessionInfo> sessions = SessionManager.getInstance().getSessions();
+        SessionInfo selected = null;
+        for (SessionInfo session : sessions) {
+            if (matchesCurrentHost(session)) {
+                TerminalSession ts = SessionManager.getInstance().getTerminalSession(session.id);
+                boolean connected = ts != null && ts.isConnected();
+                if (!connected) {
+                    continue;
+                }
+                if (selected == null || session.timestamp > selected.timestamp) {
+                    selected = session;
+                }
+            }
+        }
+        if (selected == null) {
+            recyclerView.setVisibility(View.GONE);
+            textNoSessions.setVisibility(View.VISIBLE);
+            adapter.setSessions(new ArrayList<>());
         } else {
             recyclerView.setVisibility(View.VISIBLE);
             textNoSessions.setVisibility(View.GONE);
-            adapter.setSessions(activeSessions);
+            List<SessionInfo> one = new ArrayList<>();
+            one.add(selected);
+            adapter.setSessions(one);
         }
+    }
+
+    private void loadCurrentHost() {
+        if (prefs == null) {
+            prefs = requireContext().getSharedPreferences("orcterm_prefs", Context.MODE_PRIVATE);
+        }
+        currentHost = prefs.getString("current_host_hostname", null);
+        currentUser = prefs.getString("current_host_username", null);
+        currentPort = prefs.getInt("current_host_port", -1);
+    }
+
+    private boolean matchesCurrentHost(SessionInfo session) {
+        if (session == null) return false;
+        if (currentPort > 0 && session.port != currentPort) return false;
+        if (!TextUtils.equals(currentHost, session.hostname)) return false;
+        return TextUtils.equals(currentUser, session.username);
     }
 }
