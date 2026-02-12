@@ -73,6 +73,48 @@ OrcTerm/
 
 > **注意**: 当前版本包含 JNI 实现，但需要您自行提供编译好的静态库 (`libssh2.a`, `libssl.a`, `libcrypto.a`) 以启用完整的 SSH 功能。详情请参考 [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)。
 
+## 🔧 libssh2 自动化构建脚本
+
+脚本目录：`docs/scripts`
+
+### macOS
+
+1. 安装依赖：Xcode 命令行工具、cmake、git、OpenSSL（建议通过 brew 安装 openssl@3）
+2. 运行脚本：
+   - `./docs/scripts/build_libssh2_macos.sh`
+3. 产物目录：
+   - `docs/scripts/libs/macos`
+
+### Windows
+
+1. 安装依赖：Visual Studio Build Tools（包含 cl/nmake）、cmake、git、OpenSSL
+2. 设置 OpenSSL 根目录环境变量：
+   - `set OPENSSL_ROOT_DIR=C:\path\to\openssl`
+3. 运行脚本（二选一）：
+   - `docs\scripts\build_libssh2_windows.bat`
+   - `docs\scripts\build_libssh2_windows.cmd`
+4. 产物目录：
+   - `docs\scripts\libs\windows`
+
+### Android NDK
+
+1. 安装依赖：Android NDK、cmake、git
+2. 设置 NDK 环境变量：
+   - `export ANDROID_NDK_ROOT=/path/to/ndk` 或 `set ANDROID_NDK_ROOT=C:\path\to\ndk`
+3. 确保已准备 OpenSSL 头文件与对应 ABI 的静态库：
+   - `sshlib/src/main/cpp/include/openssl`
+   - `sshlib/src/main/cpp/libs/<abi>/libssl.a`、`libcrypto.a`
+4. 运行脚本：
+   - `./docs/scripts/build_libssh2_android_ndk.sh`
+5. 产物目录：
+   - `docs/scripts/libs/android/<abi>`
+
+### 验证方法
+
+- macOS：检查 `docs/scripts/libs/macos` 下是否生成 `libssh2.a` 与 `libssh2*.dylib`
+- Windows：检查 `docs/scripts/libs/windows` 下是否生成 `libssh2*.lib` 与 `libssh2*.dll`
+- Android：检查 `docs/scripts/libs/android/<abi>` 下是否生成 `libssh2.a` 与 `libssh2*.so`
+
 ## 📅 开发路线图
 
 - [x] MVP 架构搭建 (Java + JNI)

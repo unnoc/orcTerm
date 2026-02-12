@@ -2,55 +2,29 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("orcterm-core")
 
-# ==============================================================================
-# 1. OpenSSL Setup (Prebuilt)
-# ==============================================================================
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
-add_library(ssl STATIC IMPORTED)
-set_target_properties(ssl PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libssl.a")
-
-add_library(crypto STATIC IMPORTED)
-set_target_properties(crypto PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libcrypto.a")
-
-# ==============================================================================
-# 2. Libssh2 Setup (Build from Source)
-# ==============================================================================
-# We compile libssh2 directly here instead of using add_subdirectory to avoid
-# configuration complexity of the full libssh2 project.
+set(OPENSSL_ROOT_DIR ${CMAKE_SOURCE_DIR})
+set(OPENSSL_USE_STATIC_LIBS TRUE)
+set(OPENSSL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
+set(OPENSSL_SSL_LIBRARY ${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libssl.a)
+set(OPENSSL_CRYPTO_LIBRARY ${CMAKE_SOURCE_DIR}/libs/${ANDROID_ABI}/libcrypto.a)
+find_package(OpenSSL REQUIRED)
 
 set(LIBSSH2_SRC_DIR ${CMAKE_SOURCE_DIR}/libssh2_official)
-
 include_directories(${LIBSSH2_SRC_DIR}/include)
 
-# List of source files for libssh2 (Core + Packet + SFTP + etc.)
-file(GLOB LIBSSH2_SOURCES 
-    "${LIBSSH2_SRC_DIR}/src/*.c"
-)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(LIBSSH2_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(LIBSSH2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+set(LIBSSH2_USE_PKGCONFIG OFF CACHE BOOL "" FORCE)
+set(ENABLE_ZLIB_COMPRESSION OFF CACHE BOOL "" FORCE)
+set(CRYPTO_BACKEND "OpenSSL" CACHE STRING "" FORCE)
 
-# Configuration definitions for libssh2
-add_definitions(
-    -DLIBSSH2_OPENSSL  # Use OpenSSL backend
-    -DHAVE_UNISTD_H
-    -DHAVE_INTTYPES_H
-    -DHAVE_STDLIB_H
-    -DHAVE_SYS_SELECT_H
-    -DHAVE_SYS_SOCKET_H
-    -DHAVE_SYS_IOCTL_H
-    -DHAVE_SYS_TIME_H
-    -DHAVE_SYS_UN_H
-    -DHAVE_O_NONBLOCK
-    -DHAVE_SELECT
-    -DHAVE_SOCKET
-    -DHAVE_INET_ADDR
-    -DHAVE_GETTIMEOFDAY
-    -DHAVE_SNPRINTF
-)
-
-add_library(ssh2_static STATIC ${LIBSSH2_SOURCES})
-
-# Link OpenSSL to Libssh2
-target_link_libraries(ssh2_static crypto ssl)
+add_subdirectory(${LIBSSH2_SRC_DIR} ${CMAKE_BINARY_DIR}/libssh2_build)
 
 # ==============================================================================
 # 3. OrcTerm JNI Bridge
@@ -65,9 +39,9 @@ add_definitions(-DORCTERM_REAL_SSH)
 find_library(log-lib log)
 
 target_link_libraries(orcterm-jni
-    ssh2_static
-    ssl
-    crypto
+    libssh2_static
+    OpenSSL::SSL
+    OpenSSL::Crypto
     ${log-lib}
     z
 )
