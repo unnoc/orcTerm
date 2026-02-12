@@ -3,7 +3,6 @@ package com.orcterm.core.transport;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-import com.orcterm.OrcTermApplication;
 import com.orcterm.core.ssh.SshNative;
 import java.io.IOException;
 import java.io.InputStream;
@@ -83,7 +82,13 @@ public class SshTransport implements Transport {
             throw new Exception("Connection failed");
         }
 
-        Context context = OrcTermApplication.getAppContext();
+        Context context = null;
+        try {
+            Object app = Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null);
+            if (app instanceof Context) {
+                context = (Context) app;
+            }
+        } catch (Exception ignored) {}
         if (context != null) {
             SharedPreferences prefs = context.getSharedPreferences("orcterm_prefs", Context.MODE_PRIVATE);
             int connectTimeoutSec = prefs.getInt("ssh_connect_timeout_sec", 10);

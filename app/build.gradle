@@ -15,13 +15,6 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
-        externalNativeBuild {
-            cmake {
-                cppFlags ""
-                abiFilters 'arm64-v8a', 'x86_64'
-            }
-        }
-        
         // Enable Multi-dex if needed (usually for API < 21, but good for large apps)
         multiDexEnabled true
     }
@@ -79,13 +72,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
-    externalNativeBuild {
-        cmake {
-            path file('src/main/cpp/CMakeLists.txt')
-            version '3.22.1'
-        }
-    }
-    
     buildFeatures {
         viewBinding true
     }
@@ -108,6 +94,7 @@ android {
 }
 
 dependencies {
+    implementation project(':sshlib')
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'

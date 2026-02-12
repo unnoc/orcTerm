@@ -19,7 +19,7 @@ set_target_properties(crypto PROPERTIES IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/l
 # We compile libssh2 directly here instead of using add_subdirectory to avoid
 # configuration complexity of the full libssh2 project.
 
-set(LIBSSH2_SRC_DIR ${CMAKE_SOURCE_DIR}/libssh2_src)
+set(LIBSSH2_SRC_DIR ${CMAKE_SOURCE_DIR}/libssh2_official)
 
 include_directories(${LIBSSH2_SRC_DIR}/include)
 

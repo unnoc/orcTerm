@@ -1,0 +1,3 @@
+[submodule "orcTerm-app/sshlib/src/main/cpp/libssh2_official"]
+	path = orcTerm-app/sshlib/src/main/cpp/libssh2_official
+	url = https://github.com/libssh2/libssh2.git
