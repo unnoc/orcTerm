@@ -37,6 +37,8 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
     private Long currentHostId = null;
     
     private final Map<Long, HostStatus> statusMap = new ConcurrentHashMap<>();
+    private final Map<Long, Long> lastUiUpdateTimes = new ConcurrentHashMap<>();
+    private static final long MIN_STATUS_UPDATE_INTERVAL_MS = 500;
 
     public interface OnItemClickListener {
         void onItemClick(HostEntity host);
@@ -98,6 +100,17 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
     }
     
     public void updateStatus(long hostId, HostStatus status) {
+        HostStatus previous = statusMap.get(hostId);
+        if (previous != null && isSameStatus(previous, status)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long lastUpdate = lastUiUpdateTimes.getOrDefault(hostId, 0L);
+        if (now - lastUpdate < MIN_STATUS_UPDATE_INTERVAL_MS) {
+            statusMap.put(hostId, status);
+            return;
+        }
+        lastUiUpdateTimes.put(hostId, now);
         statusMap.put(hostId, status);
         // Find index of this host
         for (int i = 0; i < getItemCount(); i++) {
@@ -108,9 +121,36 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
         }
     }
 
+    private boolean isSameStatus(HostStatus left, HostStatus right) {
+        if (left == right) return true;
+        if (left == null || right == null) return false;
+        return TextUtils.equals(left.cpuUsage, right.cpuUsage)
+                && left.cpuUsagePercent == right.cpuUsagePercent
+                && TextUtils.equals(left.memUsage, right.memUsage)
+                && left.memUsagePercent == right.memUsagePercent
+                && TextUtils.equals(left.netUpload, right.netUpload)
+                && TextUtils.equals(left.netDownload, right.netDownload)
+                && TextUtils.equals(left.diskRead, right.diskRead)
+                && TextUtils.equals(left.diskWrite, right.diskWrite)
+                && TextUtils.equals(left.uptime, right.uptime)
+                && TextUtils.equals(left.cpuCores, right.cpuCores)
+                && TextUtils.equals(left.totalMem, right.totalMem)
+                && TextUtils.equals(left.totalDisk, right.totalDisk)
+                && left.latency == right.latency
+                && TextUtils.equals(left.temperature, right.temperature)
+                && left.isOnline == right.isOnline;
+    }
+
     // 清理首页主机列表状态数据
     public void clearStatus() {
         statusMap.clear();
+        notifyDataSetChanged();
+    }
+
+    public void restoreStatus(Map<Long, HostStatus> cache) {
+        if (cache == null || cache.isEmpty()) return;
+        statusMap.clear();
+        statusMap.putAll(cache);
         notifyDataSetChanged();
     }
 

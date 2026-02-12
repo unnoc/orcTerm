@@ -41,12 +41,16 @@ import com.orcterm.util.CommandConstants;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Set;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.Map;
@@ -65,20 +69,37 @@ public class ServersFragment extends Fragment {
 
     private MainViewModel mHostViewModel;
     private HostAdapter mAdapter;
+    private RecyclerView recyclerView;
     private String mCurrentSearchQuery = "";
     private Comparator<HostEntity> mCurrentSort = null;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final int monitorPoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
+    private final java.util.concurrent.Semaphore monitorSemaphore =
+            new java.util.concurrent.Semaphore(Math.min(4, monitorPoolSize));
+    private final ExecutorService executor = Executors.newFixedThreadPool(monitorPoolSize);
     private List<HostEntity> mAllHosts = new ArrayList<>();
     private NavViewModel navViewModel;
     
     private ScheduledExecutorService monitorScheduler;
+    private volatile boolean monitoringEnabled = false;
+    private long currentMonitorIntervalMs = 0;
+    private static final long MONITOR_INTERVAL_FOREGROUND_MS = 5000;
+    private static final long MONITOR_INTERVAL_BACKGROUND_MS = 30000;
     private final Map<Long, Long> monitorHandles = new ConcurrentHashMap<>();
+    private final Set<Long> sharedMonitorHosts = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Map<Long, Integer> monitorFailCounts = new ConcurrentHashMap<>();
+    private final Map<Long, Long> monitorNextRetryTimes = new ConcurrentHashMap<>();
+    private final Map<Long, Long> monitorLastSuccessTimes = new ConcurrentHashMap<>();
+    private final Map<Long, Long> monitorThrottleUntilTimes = new ConcurrentHashMap<>();
+    private static final long MONITOR_THROTTLE_BASE_MS = 15000;
     // Store previous CPU values: [user, nice, system, idle, iowait, irq, softirq, steal]
     private final Map<Long, long[]> prevCpuStats = new ConcurrentHashMap<>();
+    private final Map<Long, String> cachedCpuCores = new ConcurrentHashMap<>();
     // Store previous Net values: [timestamp, rx_bytes, tx_bytes]
     private final Map<Long, long[]> prevIoStats = new ConcurrentHashMap<>();
     // Store previous Disk values: [timestamp, read_sectors, write_sectors]
     private final Map<Long, long[]> prevDiskStats = new ConcurrentHashMap<>();
+    private final Map<Long, String> cachedDiskDevice = new ConcurrentHashMap<>();
+    private final Map<Long, String> cachedNetInterface = new ConcurrentHashMap<>();
     
     private SharedPreferences prefs;
     private SharedPreferences.OnSharedPreferenceChangeListener prefListener;
@@ -88,6 +109,11 @@ public class ServersFragment extends Fragment {
         super.onCreate(savedInstanceState);
         setHasOptionsMenu(true);
         prefs = requireContext().getSharedPreferences("orcterm_prefs", Context.MODE_PRIVATE);
+        if (executor instanceof ThreadPoolExecutor) {
+            ThreadPoolExecutor pool = (ThreadPoolExecutor) executor;
+            pool.setKeepAliveTime(30, TimeUnit.SECONDS);
+            pool.allowCoreThreadTimeOut(true);
+        }
     }
 
     @Nullable
@@ -101,7 +127,7 @@ public class ServersFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         AppBackgroundHelper.applyFromPrefs(requireContext(), view);
         navViewModel = new ViewModelProvider(requireActivity()).get(NavViewModel.class);
-        RecyclerView recyclerView = view.findViewById(R.id.recyclerview);
+        recyclerView = view.findViewById(R.id.recyclerview);
         mAdapter = new HostAdapter(new HostAdapter.HostDiff(),
                 new HostAdapter.OnItemClickListener() {
                     @Override
@@ -119,6 +145,7 @@ public class ServersFragment extends Fragment {
         recyclerView.setAdapter(mAdapter);
         mAdapter.setDisplayStyle(prefs.getInt("host_display_style", 0));
         mAdapter.setLayoutDensity(prefs.getInt("list_density", 1));
+        applyCachedStatus();
         
         prefListener = (sharedPreferences, key) -> {
             if ("host_display_style".equals(key)) {
@@ -131,11 +158,14 @@ public class ServersFragment extends Fragment {
                 // 实时响应首页主机列表自动获取信息开关
                 boolean enabled = sharedPreferences.getBoolean(key, false);
                 if (enabled) {
-                    startMonitoring();
+                    startMonitoring(MONITOR_INTERVAL_FOREGROUND_MS);
                 } else {
                     stopMonitoring();
                     if (mAdapter != null) {
                         mAdapter.clearStatus();
+                    }
+                    if (navViewModel != null) {
+                        navViewModel.clearHostStatusCache();
                     }
                 }
             }
@@ -209,11 +239,14 @@ public class ServersFragment extends Fragment {
         }
         // 首页主机列表是否自动获取信息
         if (isHomeHostListAutoFetchEnabled()) {
-            startMonitoring();
+            startMonitoring(MONITOR_INTERVAL_FOREGROUND_MS);
         } else {
             stopMonitoring();
             if (mAdapter != null) {
                 mAdapter.clearStatus();
+            }
+            if (navViewModel != null) {
+                navViewModel.clearHostStatusCache();
             }
         }
     }
@@ -221,13 +254,25 @@ public class ServersFragment extends Fragment {
     @Override
     public void onPause() {
         super.onPause();
-        stopMonitoring();
+        if (isHomeHostListAutoFetchEnabled()) {
+            startMonitoring(MONITOR_INTERVAL_BACKGROUND_MS);
+        } else {
+            stopMonitoring();
+        }
     }
 
-    private void startMonitoring() {
-        if (monitorScheduler != null && !monitorScheduler.isShutdown()) return;
-        monitorScheduler = Executors.newSingleThreadScheduledExecutor();
-        monitorScheduler.scheduleWithFixedDelay(this::refreshStats, 0, 5000, TimeUnit.MILLISECONDS);
+    private void startMonitoring(long intervalMs) {
+        if (monitorScheduler != null && !monitorScheduler.isShutdown()) {
+            if (currentMonitorIntervalMs == intervalMs) return;
+            monitorScheduler.shutdownNow();
+            monitorScheduler = null;
+        }
+        monitoringEnabled = true;
+        currentMonitorIntervalMs = intervalMs;
+        ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1);
+        scheduler.setRemoveOnCancelPolicy(true);
+        monitorScheduler = scheduler;
+        monitorScheduler.scheduleWithFixedDelay(this::refreshStats, 0, intervalMs, TimeUnit.MILLISECONDS);
     }
 
     // 判断首页主机列表是否启用自动获取信息
@@ -236,35 +281,94 @@ public class ServersFragment extends Fragment {
     }
 
     private void stopMonitoring() {
+        monitoringEnabled = false;
         if (monitorScheduler != null) {
             monitorScheduler.shutdownNow();
             monitorScheduler = null;
         }
         executor.execute(() -> {
             SshNative ssh = new SshNative();
-            for (Long handle : monitorHandles.values()) {
+            for (Map.Entry<Long, Long> entry : monitorHandles.entrySet()) {
+                if (sharedMonitorHosts.contains(entry.getKey())) continue;
+                Long handle = entry.getValue();
                 if (handle != 0) ssh.disconnect(handle);
             }
             monitorHandles.clear();
+            sharedMonitorHosts.clear();
+            monitorFailCounts.clear();
+            monitorNextRetryTimes.clear();
+            monitorLastSuccessTimes.clear();
+            monitorThrottleUntilTimes.clear();
             prevCpuStats.clear();
+            cachedCpuCores.clear();
             prevIoStats.clear();
             prevDiskStats.clear();
+            cachedDiskDevice.clear();
+            cachedNetInterface.clear();
         });
     }
 
     private void refreshStats() {
+        if (!monitoringEnabled) return;
         if (mAdapter == null || mAllHosts == null || mAllHosts.isEmpty()) return;
-        for (HostEntity host : mAllHosts) {
-             executor.execute(() -> updateHostStats(host));
+        List<HostEntity> targets = new ArrayList<>();
+        if (recyclerView != null && recyclerView.getLayoutManager() instanceof LinearLayoutManager) {
+            LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+            int first = layoutManager.findFirstVisibleItemPosition();
+            int last = layoutManager.findLastVisibleItemPosition();
+            if (first != RecyclerView.NO_POSITION && last != RecyclerView.NO_POSITION) {
+                int max = Math.min(last, mAdapter.getItemCount() - 1);
+                for (int i = Math.max(0, first); i <= max; i++) {
+                    targets.add(mAdapter.getCurrentList().get(i));
+                }
+            }
+        }
+        if (targets.isEmpty()) {
+            Long currentId = navViewModel != null ? navViewModel.getCurrentHostId().getValue() : null;
+            if (currentId != null) {
+                for (HostEntity host : mAllHosts) {
+                    if (host.id == currentId) {
+                        targets.add(host);
+                        break;
+                    }
+                }
+            }
+        }
+        if (targets.isEmpty()) {
+            int limit = Math.min(5, mAllHosts.size());
+            for (int i = 0; i < limit; i++) {
+                targets.add(mAllHosts.get(i));
+            }
+        }
+        for (HostEntity host : targets) {
+            executor.execute(() -> updateHostStats(host));
         }
     }
 
     private void updateHostStats(HostEntity host) {
+        if (!monitoringEnabled) return;
+        long now = System.currentTimeMillis();
+        long nextRetry = monitorNextRetryTimes.getOrDefault(host.id, 0L);
+        if (now < nextRetry) return;
+        long throttleUntil = monitorThrottleUntilTimes.getOrDefault(host.id, 0L);
+        if (now < throttleUntil) return;
+        if (!monitorSemaphore.tryAcquire()) return;
         long handle = monitorHandles.getOrDefault(host.id, 0L);
         SshNative ssh = new SshNative();
-        long start = System.currentTimeMillis();
+        long start = now;
         
         try {
+            if (handle == 0) {
+                com.orcterm.core.session.SessionManager sessionManager = com.orcterm.core.session.SessionManager.getInstance();
+                com.orcterm.core.terminal.TerminalSession existing = sessionManager.findConnectedSession(host.hostname, host.port, host.username);
+                if (existing != null) {
+                    handle = existing.getHandle();
+                    if (handle != 0) {
+                        monitorHandles.put(host.id, handle);
+                        sharedMonitorHosts.add(host.id);
+                    }
+                }
+            }
             if (handle == 0) {
                 handle = ssh.connect(host.hostname, host.port);
                 if (handle == 0) throw new Exception("Connect failed");
@@ -281,6 +385,7 @@ public class ServersFragment extends Fragment {
                     throw new Exception("Auth failed");
                 }
                 monitorHandles.put(host.id, handle);
+                sharedMonitorHosts.remove(host.id);
             }
 
             // Execute composite command
@@ -289,17 +394,47 @@ public class ServersFragment extends Fragment {
             long latency = System.currentTimeMillis() - start;
             
             HostStatus status = parseStats(host.id, output, latency);
+            monitorFailCounts.remove(host.id);
+            monitorNextRetryTimes.remove(host.id);
+            monitorThrottleUntilTimes.remove(host.id);
+            monitorLastSuccessTimes.put(host.id, System.currentTimeMillis());
+            if (navViewModel != null) {
+                navViewModel.putHostStatus(host.id, status);
+            }
             if (getActivity() != null) {
                 getActivity().runOnUiThread(() -> mAdapter.updateStatus(host.id, status));
             }
             
         } catch (Exception e) {
             monitorHandles.remove(host.id); // Remove invalid handle
+            sharedMonitorHosts.remove(host.id);
+            int failCount = monitorFailCounts.getOrDefault(host.id, 0) + 1;
+            monitorFailCounts.put(host.id, failCount);
+            long delay = Math.min(60000L, 2000L << Math.min(failCount, 5));
+            monitorNextRetryTimes.put(host.id, System.currentTimeMillis() + delay);
+            long lastSuccess = monitorLastSuccessTimes.getOrDefault(host.id, 0L);
+            if (lastSuccess > 0) {
+                long throttle = Math.min(60000L, MONITOR_THROTTLE_BASE_MS * failCount);
+                monitorThrottleUntilTimes.put(host.id, System.currentTimeMillis() + throttle);
+            }
             HostStatus errorStatus = new HostStatus();
             errorStatus.isOnline = false;
+            if (navViewModel != null) {
+                navViewModel.putHostStatus(host.id, errorStatus);
+            }
             if (getActivity() != null) {
                 getActivity().runOnUiThread(() -> mAdapter.updateStatus(host.id, errorStatus));
             }
+        } finally {
+            monitorSemaphore.release();
+        }
+    }
+
+    private void applyCachedStatus() {
+        if (mAdapter == null || navViewModel == null) return;
+        Map<Long, HostStatus> cache = navViewModel.getHostStatusCache();
+        if (cache != null && !cache.isEmpty()) {
+            mAdapter.restoreStatus(cache);
         }
     }
     
@@ -308,209 +443,299 @@ public class ServersFragment extends Fragment {
         status.isOnline = true;
         status.latency = latency;
         status.timestamp = System.currentTimeMillis();
-        
-        String[] sections = output.split("SECTION_");
-        
-        // 1. Uptime (First part)
-        if (sections.length > 0) {
-            String[] lines = sections[0].split("\n");
-            if (lines.length > 0) {
-                try {
-                    double uptimeSec = Double.parseDouble(lines[0].trim().split(" ")[0]);
-                    status.uptime = formatUptime((long)uptimeSec);
-                } catch (Exception e) {}
+        Map<String, String> sectionMap = splitSections(output);
+        String uptimePart = sectionMap.getOrDefault("UPTIME", "");
+        String uptimeLine = firstNonEmptyLine(uptimePart);
+        if (!uptimeLine.isEmpty()) {
+            try {
+                double uptimeSec = Double.parseDouble(uptimeLine.trim().split(" ")[0]);
+                status.uptime = formatUptime((long) uptimeSec);
+            } catch (Exception e) {}
+        }
+
+        String cpuSection = sectionMap.getOrDefault("CPU", "");
+        if (!cpuSection.isEmpty()) {
+            String[] lines = cpuSection.split("\n");
+            for (String l : lines) {
+                if (l.startsWith("cpu ")) {
+                    String[] parts = l.trim().split("\\s+");
+                    if (parts.length >= 5) {
+                        long user = Long.parseLong(parts[1]);
+                        long nice = Long.parseLong(parts[2]);
+                        long system = Long.parseLong(parts[3]);
+                        long idle = Long.parseLong(parts[4]);
+                        long iowait = parts.length > 5 ? Long.parseLong(parts[5]) : 0;
+                        long irq = parts.length > 6 ? Long.parseLong(parts[6]) : 0;
+                        long softirq = parts.length > 7 ? Long.parseLong(parts[7]) : 0;
+                        long steal = parts.length > 8 ? Long.parseLong(parts[8]) : 0;
+
+                        long total = user + nice + system + idle + iowait + irq + softirq + steal;
+                        long work = user + nice + system + irq + softirq + steal;
+
+                        long[] prev = prevCpuStats.get(hostId);
+                        if (prev != null) {
+                            long totalDelta = total - prev[0];
+                            long workDelta = work - prev[1];
+                            if (totalDelta > 0) {
+                                status.cpuUsagePercent = (int) (workDelta * 100 / totalDelta);
+                            }
+                        }
+                        status.cpuUsage = status.cpuUsagePercent + "%";
+                        prevCpuStats.put(hostId, new long[]{total, work});
+                    }
+                }
             }
         }
-        
-        // 2. CPU
-        if (sections.length > 1 && sections[1].startsWith("CPU")) {
-             // cpu  2255 34 2290 22625563 ...
-             String line = sections[1].substring(3).trim(); // Remove "CPU" prefix from split
-             // Actually split keeps separator? No. "SECTION_CPU" -> split by "SECTION_" -> "CPU..."
-             // split by "SECTION_" results in:
-             // [0]: uptime...
-             // [1]: CPU\n...
-             // [2]: MEM\n...
-             
-             String[] lines = sections[1].split("\n");
-             for (String l : lines) {
-                 if (l.startsWith("cpu ")) {
-                     String[] parts = l.trim().split("\\s+");
-                     if (parts.length >= 5) {
-                         long user = Long.parseLong(parts[1]);
-                         long nice = Long.parseLong(parts[2]);
-                         long system = Long.parseLong(parts[3]);
-                         long idle = Long.parseLong(parts[4]);
-                         long iowait = parts.length > 5 ? Long.parseLong(parts[5]) : 0;
-                         long irq = parts.length > 6 ? Long.parseLong(parts[6]) : 0;
-                         long softirq = parts.length > 7 ? Long.parseLong(parts[7]) : 0;
-                         long steal = parts.length > 8 ? Long.parseLong(parts[8]) : 0;
-                         
-                         long total = user + nice + system + idle + iowait + irq + softirq + steal;
-                         long work = user + nice + system + irq + softirq + steal;
-                         
-                         long[] prev = prevCpuStats.get(hostId);
-                         if (prev != null) {
-                             long totalDelta = total - prev[0];
-                             long workDelta = work - prev[1];
-                             if (totalDelta > 0) {
-                                 status.cpuUsagePercent = (int) (workDelta * 100 / totalDelta);
-                             }
-                         }
-                         status.cpuUsage = status.cpuUsagePercent + "%";
-                          prevCpuStats.put(hostId, new long[]{total, work});
-                      }
-                  }
-              }
-         }
-         
-         // 2.5 Cores
-         if (sections.length > 2 && sections[2].startsWith("CORES")) {
-             String[] lines = sections[2].split("\n");
-             if (lines.length > 1) {
-                 status.cpuCores = lines[1].trim();
-             }
-         }
-         
-         // 3. Mem
-         if (sections.length > 3 && sections[3].startsWith("MEM")) {
-             // MemTotal:        16306508 kB
-             // MemAvailable:    ...
-             String[] lines = sections[3].split("\n");
-             long total = 0;
-             long available = 0;
-             
-             for (String l : lines) {
-                 if (l.startsWith("MemTotal:")) {
-                     String[] parts = l.split("\\s+");
-                     if (parts.length >= 2) total = Long.parseLong(parts[1]);
-                 } else if (l.startsWith("MemAvailable:")) {
-                     String[] parts = l.split("\\s+");
-                     if (parts.length >= 2) available = Long.parseLong(parts[1]);
-                 }
-             }
-             
-             if (total > 0) {
-                 status.totalMem = formatSize(total * 1024);
-                 if (available > 0) {
-                     long used = total - available;
-                     status.memUsagePercent = (int) (used * 100 / total);
-                     status.memUsage = status.memUsagePercent + "%";
-                 }
-             }
-         }
-         
-         // 4. Net
-         if (sections.length > 4 && sections[4].startsWith("NET")) {
-             // Inter-|   Receive ...
-             // eth0: 123 456 ...
-             long rx = 0;
-             long tx = 0;
-             String[] lines = sections[4].split("\n");
-             for (String l : lines) {
-                 if (l.contains(":")) {
-                     String[] parts = l.split(":")[1].trim().split("\\s+");
-                     if (parts.length >= 9) {
-                         rx += Long.parseLong(parts[0]);
-                         tx += Long.parseLong(parts[8]); // usually 9th col is tx bytes
-                     }
-                 }
-             }
-             
-             long[] prev = prevIoStats.get(hostId);
-             if (prev != null) {
-                 long timeDelta = status.timestamp - prev[0];
-                 if (timeDelta > 0) {
-                     long rxDelta = rx - prev[1];
-                     long txDelta = tx - prev[2];
-                     // B/ms * 1000 = B/s
-                     status.netDownload = formatSize(rxDelta * 1000 / timeDelta) + "/s";
-                     status.netUpload = formatSize(txDelta * 1000 / timeDelta) + "/s";
-                 }
-             }
-             // Store for next [ts, rx, tx, r, w]
-             long[] newStats = new long[]{status.timestamp, rx, tx, 0, 0};
-             if (prev != null && prev.length >= 5) {
-                 newStats[3] = prev[3];
-                 newStats[4] = prev[4];
-             }
-             prevIoStats.put(hostId, newStats);
-        }
-        
-        // 5. Disk Usage
-        if (sections.length > 5 && sections[5].startsWith("DISK_USAGE")) {
-             // /dev/root        12345678  ...
-             String[] lines = sections[5].split("\n");
-             for (String l : lines) {
-                 if (l.startsWith("/dev/") || l.trim().startsWith("/")) {
-                     String[] parts = l.split("\\s+");
-                     if (parts.length >= 2) {
-                         try {
-                             long total = Long.parseLong(parts[1]);
-                             status.totalDisk = formatSize(total);
-                         } catch (Exception e) {}
-                     }
-                 }
-             }
-        }
-        
-        // 6. Disk IO
-        if (sections.length > 6 && sections[6].startsWith("DISK_IO")) {
-             // 8       0 sda 1165 419 66346 362 0 0 0 0 0 324 362 ...
-             // Field 6 (index 5) = sectors read
-             // Field 10 (index 9) = sectors written
-             long readSectors = 0;
-             long writeSectors = 0;
-             boolean matched = false;
-             
-             String[] lines = sections[6].split("\n");
-             for (String l : lines) {
-                 String[] parts = l.trim().split("\\s+");
-                 if (parts.length >= 10) {
-                     String dev = parts[2];
-                     if (isPhysicalDisk(dev)) {
-                         matched = true;
-                         try {
-                             readSectors += Long.parseLong(parts[5]);
-                             writeSectors += Long.parseLong(parts[9]);
-                         } catch (Exception e) {}
-                     }
-                 }
-             }
 
-             if (!matched) {
-                 for (String l : lines) {
-                     String[] parts = l.trim().split("\\s+");
-                     if (parts.length >= 10) {
-                         String dev = parts[2];
-                         if (isFallbackDisk(dev)) {
-                             matched = true;
-                             try {
-                                 readSectors += Long.parseLong(parts[5]);
-                                 writeSectors += Long.parseLong(parts[9]);
-                             } catch (Exception e) {}
-                         }
-                     }
-                 }
-             }
-             
-             long[] prev = prevDiskStats.get(hostId);
-             if (prev != null) {
-                 long timeDelta = status.timestamp - prev[0];
-                 if (timeDelta > 0) {
-                     // Sector = 512 bytes
-                     long readDelta = (readSectors - prev[1]) * 512;
-                     long writeDelta = (writeSectors - prev[2]) * 512;
-                     
-                     status.diskRead = formatSize(readDelta * 1000 / timeDelta) + "/s";
-                     status.diskWrite = formatSize(writeDelta * 1000 / timeDelta) + "/s";
-                 }
-             }
-             
-             prevDiskStats.put(hostId, new long[]{status.timestamp, readSectors, writeSectors});
+        String cachedCores = cachedCpuCores.get(hostId);
+        if (cachedCores != null && !cachedCores.isEmpty()) {
+            status.cpuCores = cachedCores;
+        } else {
+            String coresSection = sectionMap.getOrDefault("CORES", "");
+            if (!coresSection.isEmpty()) {
+                String coresLine = firstNonEmptyLine(coresSection);
+                if (!coresLine.isEmpty()) {
+                    status.cpuCores = coresLine.trim();
+                    cachedCpuCores.put(hostId, status.cpuCores);
+                }
+            }
         }
-        
+
+        String memSection = sectionMap.getOrDefault("MEM", "");
+        if (!memSection.isEmpty()) {
+            String[] lines = memSection.split("\n");
+            long total = 0;
+            long available = 0;
+            for (String l : lines) {
+                if (l.startsWith("MemTotal:")) {
+                    String[] parts = l.split("\\s+");
+                    if (parts.length >= 2) total = Long.parseLong(parts[1]);
+                } else if (l.startsWith("MemAvailable:")) {
+                    String[] parts = l.split("\\s+");
+                    if (parts.length >= 2) available = Long.parseLong(parts[1]);
+                }
+            }
+            if (total > 0) {
+                status.totalMem = formatSize(total * 1024);
+                if (available > 0) {
+                    long used = total - available;
+                    status.memUsagePercent = (int) (used * 100 / total);
+                    status.memUsage = status.memUsagePercent + "%";
+                }
+            }
+        }
+
+        String netSection = sectionMap.getOrDefault("NET", "");
+        if (!netSection.isEmpty()) {
+            long rx = 0;
+            long tx = 0;
+            String selectedInterface = null;
+            long selectedRx = 0;
+            long selectedTx = 0;
+            String cachedInterface = cachedNetInterface.get(hostId);
+            String[] lines = netSection.split("\n");
+            for (String l : lines) {
+                if (l.contains(":")) {
+                    String[] split = l.split(":");
+                    if (split.length < 2) continue;
+                    String iface = split[0].trim();
+                    if (iface.startsWith("lo")) continue;
+                    String[] parts = split[1].trim().split("\\s+");
+                    if (parts.length >= 9) {
+                        long ifaceRx = Long.parseLong(parts[0]);
+                        long ifaceTx = Long.parseLong(parts[8]);
+                        rx += ifaceRx;
+                        tx += ifaceTx;
+                        if (cachedInterface != null && cachedInterface.equals(iface)) {
+                            selectedInterface = iface;
+                            selectedRx = ifaceRx;
+                            selectedTx = ifaceTx;
+                        } else if (selectedInterface == null && cachedInterface == null) {
+                            if (ifaceRx + ifaceTx > selectedRx + selectedTx) {
+                                selectedInterface = iface;
+                                selectedRx = ifaceRx;
+                                selectedTx = ifaceTx;
+                            }
+                        }
+                    }
+                }
+            }
+            if (selectedInterface != null) {
+                cachedNetInterface.put(hostId, selectedInterface);
+                rx = selectedRx;
+                tx = selectedTx;
+            }
+
+            long[] prev = prevIoStats.get(hostId);
+            if (prev != null) {
+                long timeDelta = status.timestamp - prev[0];
+                if (timeDelta > 0) {
+                    long rxDelta = rx - prev[1];
+                    long txDelta = tx - prev[2];
+                    long rxRate = rxDelta * 1000 / timeDelta;
+                    long txRate = txDelta * 1000 / timeDelta;
+                    long prevRxRate = prev.length >= 5 ? prev[3] : 0;
+                    long prevTxRate = prev.length >= 5 ? prev[4] : 0;
+                    long smoothRxRate = prevRxRate > 0 ? (rxRate * 3 + prevRxRate * 7) / 10 : rxRate;
+                    long smoothTxRate = prevTxRate > 0 ? (txRate * 3 + prevTxRate * 7) / 10 : txRate;
+                    status.netDownload = formatSize(smoothRxRate) + "/s";
+                    status.netUpload = formatSize(smoothTxRate) + "/s";
+                }
+            }
+            long[] newStats = new long[]{status.timestamp, rx, tx, 0, 0};
+            if (prev != null && prev.length >= 5) {
+                newStats[3] = prev[3];
+                newStats[4] = prev[4];
+                if (prev.length >= 5) {
+                    long timeDelta = status.timestamp - prev[0];
+                    if (timeDelta > 0) {
+                        long rxRate = (rx - prev[1]) * 1000 / timeDelta;
+                        long txRate = (tx - prev[2]) * 1000 / timeDelta;
+                        newStats[3] = prev[3] > 0 ? (rxRate * 3 + prev[3] * 7) / 10 : rxRate;
+                        newStats[4] = prev[4] > 0 ? (txRate * 3 + prev[4] * 7) / 10 : txRate;
+                    }
+                }
+            }
+            prevIoStats.put(hostId, newStats);
+        }
+
+        String diskUsageSection = sectionMap.getOrDefault("DISK_USAGE", "");
+        if (!diskUsageSection.isEmpty()) {
+            String[] lines = diskUsageSection.split("\n");
+            for (String l : lines) {
+                if (l.startsWith("/dev/") || l.trim().startsWith("/")) {
+                    String[] parts = l.split("\\s+");
+                    if (parts.length >= 2) {
+                        try {
+                            long total = Long.parseLong(parts[1]);
+                            status.totalDisk = formatSize(total);
+                        } catch (Exception e) {}
+                    }
+                }
+            }
+        }
+
+        String diskIoSection = sectionMap.getOrDefault("DISK_IO", "");
+        if (!diskIoSection.isEmpty()) {
+            long readSectors = 0;
+            long writeSectors = 0;
+            boolean matched = false;
+            String cachedDevice = cachedDiskDevice.get(hostId);
+
+            String[] lines = diskIoSection.split("\n");
+            if (cachedDevice != null) {
+                for (String l : lines) {
+                    String[] parts = l.trim().split("\\s+");
+                    if (parts.length >= 10 && cachedDevice.equals(parts[2])) {
+                        matched = true;
+                        try {
+                            readSectors += Long.parseLong(parts[5]);
+                            writeSectors += Long.parseLong(parts[9]);
+                        } catch (Exception e) {}
+                        break;
+                    }
+                }
+            }
+            if (!matched) {
+                for (String l : lines) {
+                    String[] parts = l.trim().split("\\s+");
+                    if (parts.length >= 10) {
+                        String dev = parts[2];
+                        if (isPhysicalDisk(dev)) {
+                            matched = true;
+                            cachedDiskDevice.put(hostId, dev);
+                            try {
+                                readSectors += Long.parseLong(parts[5]);
+                                writeSectors += Long.parseLong(parts[9]);
+                            } catch (Exception e) {}
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!matched) {
+                for (String l : lines) {
+                    String[] parts = l.trim().split("\\s+");
+                    if (parts.length >= 10) {
+                        String dev = parts[2];
+                        if (isFallbackDisk(dev)) {
+                            matched = true;
+                            cachedDiskDevice.put(hostId, dev);
+                            try {
+                                readSectors += Long.parseLong(parts[5]);
+                                writeSectors += Long.parseLong(parts[9]);
+                            } catch (Exception e) {}
+                            break;
+                        }
+                    }
+                }
+            }
+
+            long[] prev = prevDiskStats.get(hostId);
+            if (prev != null) {
+                long timeDelta = status.timestamp - prev[0];
+                if (timeDelta > 0) {
+                    long readDelta = (readSectors - prev[1]) * 512;
+                    long writeDelta = (writeSectors - prev[2]) * 512;
+                    long readRate = readDelta * 1000 / timeDelta;
+                    long writeRate = writeDelta * 1000 / timeDelta;
+                    long prevReadRate = prev.length >= 5 ? prev[3] : 0;
+                    long prevWriteRate = prev.length >= 5 ? prev[4] : 0;
+                    long smoothReadRate = prevReadRate > 0 ? (readRate * 3 + prevReadRate * 7) / 10 : readRate;
+                    long smoothWriteRate = prevWriteRate > 0 ? (writeRate * 3 + prevWriteRate * 7) / 10 : writeRate;
+                    status.diskRead = formatSize(smoothReadRate) + "/s";
+                    status.diskWrite = formatSize(smoothWriteRate) + "/s";
+                }
+            }
+            long[] newStats = new long[]{status.timestamp, readSectors, writeSectors, 0, 0};
+            if (prev != null && prev.length >= 5) {
+                long timeDelta = status.timestamp - prev[0];
+                if (timeDelta > 0) {
+                    long readRate = (readSectors - prev[1]) * 512 * 1000 / timeDelta;
+                    long writeRate = (writeSectors - prev[2]) * 512 * 1000 / timeDelta;
+                    newStats[3] = prev[3] > 0 ? (readRate * 3 + prev[3] * 7) / 10 : readRate;
+                    newStats[4] = prev[4] > 0 ? (writeRate * 3 + prev[4] * 7) / 10 : writeRate;
+                }
+            }
+            prevDiskStats.put(hostId, newStats);
+        }
+
         return status;
+    }
+
+    private Map<String, String> splitSections(String output) {
+        Map<String, String> result = new HashMap<>();
+        if (output == null || output.isEmpty()) return result;
+        int firstMarker = output.indexOf("SECTION_");
+        if (firstMarker <= 0) {
+            result.put("UPTIME", output);
+            return result;
+        }
+        result.put("UPTIME", output.substring(0, firstMarker));
+        int index = firstMarker;
+        while (index >= 0) {
+            int nameStart = index + "SECTION_".length();
+            int nameEnd = output.indexOf('\n', nameStart);
+            if (nameEnd < 0) break;
+            String name = output.substring(nameStart, nameEnd).trim();
+            int contentStart = nameEnd + 1;
+            int next = output.indexOf("SECTION_", contentStart);
+            int contentEnd = next >= 0 ? next : output.length();
+            result.put(name, output.substring(contentStart, contentEnd));
+            index = next;
+        }
+        return result;
+    }
+
+    private String firstNonEmptyLine(String text) {
+        String[] lines = text.split("\n");
+        for (String line : lines) {
+            if (!line.trim().isEmpty()) {
+                return line;
+            }
+        }
+        return "";
     }
     
     private boolean isPhysicalDisk(String dev) {

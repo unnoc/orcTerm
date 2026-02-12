@@ -11,12 +11,16 @@ import android.util.AttributeSet;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.VelocityTracker;
 import android.view.View;
+import android.view.ViewConfiguration;
+import android.widget.OverScroller;
 
 import com.orcterm.R;
 import com.orcterm.core.terminal.TerminalEmulator;
 
 /**
+ * 终端渲染视图组件
  * Terminal rendering view component
  * Responsible for rendering TerminalEmulator character buffer to Canvas
  * Supports ANSI color parsing and cursor drawing
@@ -46,6 +50,19 @@ public class TerminalView extends View {
     private Paint highRiskPaint;
     private Paint scrollHintPaint;
     private Paint scrollHintTextPaint;
+    private Paint searchHighlightPaint;
+    // 惯性滚动控制器
+    private OverScroller scroller;
+    // 触控速度追踪器
+    private VelocityTracker velocityTracker;
+    // 最小触发惯性速度
+    private int minFlingVelocity;
+    // 最大触发惯性速度
+    private int maxFlingVelocity;
+    // 上一次触控的 Y 坐标
+    private float lastScrollY;
+    // 是否处于惯性滚动中
+    private boolean isFlinging;
     private boolean selectionActive;
     private int selectionStartRow;
     private int selectionStartCol;
@@ -66,7 +83,18 @@ public class TerminalView extends View {
     private int highRiskHighlightColor = 0x55FF5252;
     private String pendingPreviewContent;
     private String scrollHintText;
-    private final java.util.ArrayList<ScrollbackLine> scrollbackLines = new java.util.ArrayList<>();
+    private ScrollbackLine[] scrollbackBuffer = null;
+    private int scrollbackHead = 0;
+    private int scrollbackCount = 0;
+    private char[] textRunBuffer = new char[0];
+    private String[] visibleLineCache;
+    private Boolean[] visibleHighRiskCache;
+    private int[][] visibleSearchMatchCache;
+    private int[] visibleSearchMatchCount;
+    private String visibleSearchQueryLower;
+    private int visibleCacheBaseRow = -1;
+    private int visibleCacheCols = -1;
+    private int visibleCacheRows = -1;
     private int scrollOffsetLines = 0;
     private int maxScrollbackLines = 2000;
 
@@ -101,6 +129,10 @@ public class TerminalView extends View {
     private int cursorColor = 0xFFFFFFFF;
     private long cursorBlinkStart = System.currentTimeMillis();
     private static final long CURSOR_BLINK_INTERVAL = 500; // ms
+    // 惯性滚动越界距离（像素）
+    private static final int FLING_OVERSCROLL_DISTANCE = 0;
+    // 惯性滚动回弹距离（像素）
+    private static final int FLING_OVERFLING_DISTANCE = 0;
 
     /**
      * Background scaling mode
@@ -248,11 +280,13 @@ public class TerminalView extends View {
 
     public void setSearchQuery(String query) {
         this.searchQuery = query;
+        clearVisibleSearchCache();
         postInvalidate();
     }
 
     public void clearSearchQuery() {
         this.searchQuery = null;
+        clearVisibleSearchCache();
         postInvalidate();
     }
     
@@ -296,6 +330,9 @@ public class TerminalView extends View {
 
     public void setSearchHighlightColor(int color) {
         this.searchHighlightColor = color;
+        if (searchHighlightPaint != null) {
+            searchHighlightPaint.setColor(color);
+        }
         postInvalidate();
     }
 
@@ -396,6 +433,9 @@ public class TerminalView extends View {
         backgroundImagePaint = new Paint();
         selectionPaint = new Paint();
         selectionPaint.setColor(0x5533B5E5);
+        searchHighlightPaint = new Paint();
+        searchHighlightPaint.setColor(searchHighlightColor);
+        searchHighlightPaint.setStyle(Paint.Style.FILL);
         lineNumberPaint = new Paint(textPaint);
         lineNumberPaint.setColor(lineNumberColor);
         bracketMatchPaint = new Paint();
@@ -409,6 +449,10 @@ public class TerminalView extends View {
         scrollHintTextPaint.setColor(Color.WHITE);
         scrollHintTextPaint.setTextSize(dpToPx(11));
         scrollHintText = getResources().getString(R.string.terminal_scrollback_hint);
+        scroller = new OverScroller(getContext());
+        ViewConfiguration configuration = ViewConfiguration.get(getContext());
+        minFlingVelocity = configuration.getScaledMinimumFlingVelocity();
+        maxFlingVelocity = configuration.getScaledMaximumFlingVelocity();
 
         initColors();
 
@@ -445,11 +489,6 @@ public class TerminalView extends View {
 
             @Override
             public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
-                int pointers = e2 != null ? e2.getPointerCount() : 1;
-                if (pointers == 1 && !selectionActive) {
-                    scrollByPixels(distanceY);
-                    return true;
-                }
                 return false;
             }
             
@@ -561,6 +600,9 @@ public class TerminalView extends View {
             handleThreeFingerSwipe(event, action);
             return true;
         }
+        if (activePointerCount == 1 && !selectionActive) {
+            handleSingleFingerScroll(event, action);
+        }
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             lastRequestedCol = -1;
             lastRequestedRow = -1;
@@ -659,11 +701,14 @@ public class TerminalView extends View {
         int rows = getVisibleRowCount();
         int cols = getVisibleColumnCount();
         int baseRow = getDisplayBaseRow();
-        int scrollbackCount = scrollbackLines.size();
+        int scrollbackCount = getScrollbackCount();
 
         int digits = showLineNumbers ? String.valueOf(rows).length() : 0;
         float lineNumberWidth = showLineNumbers ? (digits + 1) * charWidth : 0f;
 
+        if (textRunBuffer.length < cols) {
+            textRunBuffer = new char[cols];
+        }
         for (int row = 0; row < rows; row++) {
             float y = row * charHeight;
             float xOffset = lineNumberWidth;
@@ -678,6 +723,9 @@ public class TerminalView extends View {
                 canvas.drawRect(xOffset, y, xOffset + cols * charWidth, y + charHeight, highRiskPaint);
             }
             float x = xOffset;
+            Paint runPaint = null;
+            int runLen = 0;
+            float runStartX = x;
             
             for (int col = 0; col < cols; col++) {
                 int globalRow = baseRow + row;
@@ -685,11 +733,17 @@ public class TerminalView extends View {
                 int fgColor;
                 int bgColor;
                 if (globalRow < scrollbackCount) {
-                    ScrollbackLine line = scrollbackLines.get(globalRow);
-                    int style = (col >= 0 && col < line.styles.length) ? line.styles[col] : 0;
-                    c = (col >= 0 && col < line.chars.length) ? line.chars[col] : ' ';
-                    fgColor = decodeForegroundColor(style);
-                    bgColor = decodeBackgroundColor(style);
+                    ScrollbackLine line = getScrollbackLine(globalRow);
+                    if (line == null) {
+                        c = ' ';
+                        fgColor = 7;
+                        bgColor = 0;
+                    } else {
+                        int style = (col >= 0 && col < line.styles.length) ? line.styles[col] : 0;
+                        c = (col >= 0 && col < line.chars.length) ? line.chars[col] : ' ';
+                        fgColor = decodeForegroundColor(style);
+                        bgColor = decodeBackgroundColor(style);
+                    }
                 } else {
                     int bufferRow = globalRow - scrollbackCount;
                     c = buffer.getChar(bufferRow, col);
@@ -725,12 +779,29 @@ public class TerminalView extends View {
                     }
                     
                     Paint cachedPaint = getCachedPaint(actualFgColor);
-                    charArray[0] = c;
-                    // Adjust text position for proper baseline alignment
-                    canvas.drawText(charArray, 0, 1, x, baseline, cachedPaint);
+                    if (runPaint == cachedPaint) {
+                        textRunBuffer[runLen++] = c;
+                    } else {
+                        if (runLen > 0 && runPaint != null) {
+                            canvas.drawText(textRunBuffer, 0, runLen, runStartX, baseline, runPaint);
+                        }
+                        runPaint = cachedPaint;
+                        runLen = 0;
+                        runStartX = x;
+                        textRunBuffer[runLen++] = c;
+                    }
+                } else {
+                    if (runLen > 0 && runPaint != null) {
+                        canvas.drawText(textRunBuffer, 0, runLen, runStartX, baseline, runPaint);
+                        runLen = 0;
+                        runPaint = null;
+                    }
                 }
                 
                 x += charWidth;
+            }
+            if (runLen > 0 && runPaint != null) {
+                canvas.drawText(textRunBuffer, 0, runLen, runStartX, baseline, runPaint);
             }
         }
     }
@@ -805,29 +876,32 @@ public class TerminalView extends View {
         float xOffset = getLineNumberOffset(rows);
         
         for (int row = 0; row < rows; row++) {
-            // 获取整行文本
-            String line = buildDisplayLine(row, cols);
-            String lowerLine = line.toLowerCase(java.util.Locale.getDefault());
-            
-            int startIndex = 0;
-            while (startIndex < line.length()) {
-                int matchIndex = lowerLine.indexOf(lowerSearch, startIndex);
-                if (matchIndex == -1) break; // 没有找到更多匹配项
-                
-                // 计算匹配区域的坐标
-                float left = xOffset + matchIndex * charWidth;
-                float top = row * charHeight;
-                float right = left + searchQuery.length() * charWidth;
-                float bottom = top + charHeight;
-                
-                // 绘制搜索高亮
-                Paint highlightPaint = new Paint();
-                highlightPaint.setColor(searchHighlightColor);
-                highlightPaint.setStyle(Paint.Style.FILL);
-                canvas.drawRect(left, top, right, bottom, highlightPaint);
-                
-                startIndex = matchIndex + 1; // 移动到下一个可能的匹配位置
+            int count = getSearchMatchesForRow(row, cols, lowerSearch);
+            if (count <= 0) continue;
+            int[] matches = visibleSearchMatchCache[row];
+            int searchLen = searchQuery.length();
+            int startIndex = matches[0];
+            int endIndex = startIndex + searchLen;
+            for (int i = 1; i < count; i++) {
+                int matchIndex = matches[i];
+                int matchEnd = matchIndex + searchLen;
+                if (matchIndex <= endIndex) {
+                    endIndex = Math.max(endIndex, matchEnd);
+                } else {
+                    float left = xOffset + startIndex * charWidth;
+                    float top = row * charHeight;
+                    float right = xOffset + endIndex * charWidth;
+                    float bottom = top + charHeight;
+                    canvas.drawRect(left, top, right, bottom, searchHighlightPaint);
+                    startIndex = matchIndex;
+                    endIndex = matchEnd;
+                }
             }
+            float left = xOffset + startIndex * charWidth;
+            float top = row * charHeight;
+            float right = xOffset + endIndex * charWidth;
+            float bottom = top + charHeight;
+            canvas.drawRect(left, top, right, bottom, searchHighlightPaint);
         }
     }
 
@@ -975,9 +1049,46 @@ public class TerminalView extends View {
      * Invalidate dirty region for performance optimization
      */
     private void invalidateDirtyRegion() {
-        // For now, invalidate the whole view
-        // Could be optimized to only invalidate changed regions
-        postInvalidate();
+        if (emulator == null) {
+            postInvalidate();
+            return;
+        }
+        TerminalEmulator.DirtyRegion dirtyRegion = emulator.getDirtyRegion();
+        if (dirtyRegion == null || !dirtyRegion.isDirty()) {
+            return;
+        }
+        int rows = getVisibleRowCount();
+        int cols = getVisibleColumnCount();
+        if (rows <= 0 || cols <= 0) {
+            postInvalidate();
+            emulator.clearDirtyRegion();
+            return;
+        }
+        int scrollbackCount = getScrollbackCount();
+        int baseRow = getDisplayBaseRow();
+        int visibleStart = baseRow;
+        int visibleEnd = baseRow + rows - 1;
+        int globalStart = scrollbackCount + dirtyRegion.getMinY();
+        int globalEnd = scrollbackCount + dirtyRegion.getMaxY();
+        int clippedStart = Math.max(visibleStart, globalStart);
+        int clippedEnd = Math.min(visibleEnd, globalEnd);
+        if (clippedStart > clippedEnd) {
+            emulator.clearDirtyRegion();
+            return;
+        }
+        int startRow = clippedStart - baseRow;
+        int endRow = clippedEnd - baseRow;
+        float xOffset = getLineNumberOffset(rows);
+        int minX = Math.max(0, Math.min(cols - 1, dirtyRegion.getMinX()));
+        int maxX = Math.max(0, Math.min(cols - 1, dirtyRegion.getMaxX()));
+        float left = showLineNumbers ? 0f : xOffset + minX * charWidth;
+        float right = xOffset + (maxX + 1) * charWidth;
+        float top = startRow * charHeight;
+        float bottom = (endRow + 1) * charHeight;
+        postInvalidate((int) left, (int) top, (int) right, (int) bottom);
+        invalidateVisibleLineCache(startRow, endRow);
+        invalidateVisibleSearchCache(startRow, endRow);
+        emulator.clearDirtyRegion();
     }
 
     /**
@@ -1022,12 +1133,26 @@ public class TerminalView extends View {
     }
 
     private boolean isHighRiskLine(int row, int cols) {
+        if (emulator == null) return false;
+        int baseRow = getDisplayBaseRow();
+        int rows = getVisibleRowCount();
+        ensureVisibleLineCache(baseRow, cols, rows);
+        if (row >= 0 && row < visibleCacheRows) {
+            Boolean cached = visibleHighRiskCache[row];
+            if (cached != null) {
+                return cached;
+            }
+        }
         String line = buildDisplayLine(row, cols).trim().toLowerCase(java.util.Locale.getDefault());
-        if (line.isEmpty()) return false;
-        return line.contains("rm -rf")
-            || line.contains("mkfs")
-            || line.contains("dd if=")
-            || line.contains(":(){:|:&};:");
+        boolean risky = !line.isEmpty()
+            && (line.contains("rm -rf")
+                || line.contains("mkfs")
+                || line.contains("dd if=")
+                || line.contains(":(){:|:&};:"));
+        if (row >= 0 && row < visibleCacheRows) {
+            visibleHighRiskCache[row] = risky;
+        }
+        return risky;
     }
 
     private void handleTwoFingerSelection(MotionEvent event, int action) {
@@ -1117,7 +1242,7 @@ public class TerminalView extends View {
     }
 
     private int getTotalRowCount() {
-        return scrollbackLines.size() + getVisibleRowCount();
+        return getScrollbackCount() + getVisibleRowCount();
     }
 
     private int getMaxScrollOffset() {
@@ -1141,6 +1266,7 @@ public class TerminalView extends View {
         if (clamped != scrollOffsetLines) {
             scrollOffsetLines = clamped;
             invalidate();
+            clearVisibleLineCache();
         }
     }
 
@@ -1152,38 +1278,127 @@ public class TerminalView extends View {
         }
     }
 
+    // 单指滚动与惯性处理
+    private void handleSingleFingerScroll(MotionEvent event, int action) {
+        if (charHeight <= 0) return;
+        if (velocityTracker == null) {
+            velocityTracker = VelocityTracker.obtain();
+        }
+        velocityTracker.addMovement(event);
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                lastScrollY = event.getY();
+                isFlinging = false;
+                if (!scroller.isFinished()) {
+                    scroller.forceFinished(true);
+                }
+                break;
+            case MotionEvent.ACTION_MOVE:
+                float currentY = event.getY();
+                float dy = lastScrollY - currentY;
+                if (Math.abs(dy) > 0) {
+                    scrollByPixels(dy);
+                }
+                lastScrollY = currentY;
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                velocityTracker.computeCurrentVelocity(1000, maxFlingVelocity);
+                float velocityY = velocityTracker.getYVelocity();
+                if (Math.abs(velocityY) > minFlingVelocity) {
+                    startFling(-velocityY);
+                }
+                velocityTracker.recycle();
+                velocityTracker = null;
+                break;
+            default:
+                break;
+        }
+    }
+
+    // 启动惯性滚动
+    private void startFling(float velocityY) {
+        if (charHeight <= 0) return;
+        int maxOffset = getMaxScrollOffset();
+        int maxPixels = Math.round(maxOffset * charHeight);
+        int currentPixels = Math.round(scrollOffsetLines * charHeight);
+        scroller.fling(
+                0,
+                currentPixels,
+                0,
+                Math.round(velocityY),
+                0,
+                0,
+                0,
+                maxPixels,
+                FLING_OVERSCROLL_DISTANCE,
+                FLING_OVERFLING_DISTANCE
+        );
+        isFlinging = true;
+        postInvalidateOnAnimation();
+    }
+
+    // 计算并推进惯性滚动帧
+    @Override
+    public void computeScroll() {
+        if (scroller == null) {
+            return;
+        }
+        if (scroller.computeScrollOffset()) {
+            if (charHeight > 0) {
+                int offset = Math.round(scroller.getCurrY() / charHeight);
+                setScrollOffset(offset);
+            }
+            postInvalidateOnAnimation();
+        } else if (isFlinging) {
+            isFlinging = false;
+        }
+    }
+
     private void addScrollbackLine(char[] chars, int[] styles) {
         if (chars == null || styles == null) return;
-        scrollbackLines.add(new ScrollbackLine(chars, styles));
+        if (maxScrollbackLines <= 0) return;
+        ensureScrollbackCapacity(maxScrollbackLines);
+        int newCount = Math.min(scrollbackCount + 1, maxScrollbackLines);
         if (scrollOffsetLines > 0) {
-            scrollOffsetLines = Math.min(scrollOffsetLines + 1, getMaxScrollOffset());
+            int maxOffsetAfterAdd = Math.max(0, newCount - getVisibleRowCount());
+            scrollOffsetLines = Math.min(scrollOffsetLines + 1, maxOffsetAfterAdd);
         }
-        if (scrollbackLines.size() > maxScrollbackLines) {
-            int remove = scrollbackLines.size() - maxScrollbackLines;
-            for (int i = 0; i < remove; i++) {
-                scrollbackLines.remove(0);
-            }
+        if (scrollbackCount < maxScrollbackLines) {
+            int index = (scrollbackHead + scrollbackCount) % maxScrollbackLines;
+            scrollbackBuffer[index] = new ScrollbackLine(chars, styles);
+            scrollbackCount++;
+        } else {
+            scrollbackBuffer[scrollbackHead] = new ScrollbackLine(chars, styles);
+            scrollbackHead = (scrollbackHead + 1) % maxScrollbackLines;
             if (scrollOffsetLines > 0) {
-                scrollOffsetLines = Math.max(0, scrollOffsetLines - remove);
+                scrollOffsetLines = Math.max(0, scrollOffsetLines - 1);
             }
         }
+        clearVisibleLineCache();
     }
 
     private void resetScrollback() {
-        scrollbackLines.clear();
+        scrollbackHead = 0;
+        scrollbackCount = 0;
+        if (maxScrollbackLines > 0) {
+            scrollbackBuffer = new ScrollbackLine[maxScrollbackLines];
+        } else {
+            scrollbackBuffer = null;
+        }
         scrollOffsetLines = 0;
+        clearVisibleLineCache();
     }
 
     public void setMaxScrollbackLines(int maxLines) {
-        maxScrollbackLines = Math.max(0, maxLines);
-        if (scrollbackLines.size() > maxScrollbackLines) {
-            int remove = scrollbackLines.size() - maxScrollbackLines;
-            for (int i = 0; i < remove; i++) {
-                scrollbackLines.remove(0);
-            }
-            scrollOffsetLines = Math.max(0, scrollOffsetLines - remove);
+        int newMax = Math.max(0, maxLines);
+        if (newMax == maxScrollbackLines) {
+            return;
         }
+        maxScrollbackLines = newMax;
+        rebuildScrollbackBuffer();
         setScrollOffset(scrollOffsetLines);
+        clearVisibleLineCache();
     }
 
     public void scrollToBottom() {
@@ -1203,19 +1418,34 @@ public class TerminalView extends View {
     }
 
     private String buildDisplayLine(int row, int cols) {
-        StringBuilder sb = new StringBuilder(cols);
         if (emulator == null) return "";
         int baseRow = getDisplayBaseRow();
+        ensureVisibleLineCache(baseRow, cols, getVisibleRowCount());
+        if (row >= 0 && row < visibleCacheRows) {
+            String cached = visibleLineCache[row];
+            if (cached != null) return cached;
+        }
+        StringBuilder sb = new StringBuilder(cols);
         int globalRow = baseRow + row;
-        int scrollbackCount = scrollbackLines.size();
+        int scrollbackCount = getScrollbackCount();
         if (globalRow < scrollbackCount) {
-            ScrollbackLine line = scrollbackLines.get(globalRow);
+            ScrollbackLine line = getScrollbackLine(globalRow);
+            if (line == null) {
+                for (int col = 0; col < cols; col++) {
+                    sb.append(' ');
+                }
+                String built = sb.toString();
+                cacheVisibleLine(row, built);
+                return built;
+            }
             for (int col = 0; col < cols; col++) {
                 char c = (col >= 0 && col < line.chars.length) ? line.chars[col] : ' ';
                 if (c == 0) c = ' ';
                 sb.append(c);
             }
-            return sb.toString();
+            String built = sb.toString();
+            cacheVisibleLine(row, built);
+            return built;
         }
         TerminalEmulator.ScreenBuffer buffer = emulator.getScreenBuffer();
         if (buffer == null) return "";
@@ -1225,7 +1455,9 @@ public class TerminalView extends View {
             if (c == 0) c = ' ';
             sb.append(c);
         }
-        return sb.toString();
+        String built = sb.toString();
+        cacheVisibleLine(row, built);
+        return built;
     }
 
     private void clearSelection() {
@@ -1233,6 +1465,175 @@ public class TerminalView extends View {
             selectionActive = false;
             invalidate();
         }
+    }
+
+    private int getScrollbackCount() {
+        return scrollbackCount;
+    }
+
+    private ScrollbackLine getScrollbackLine(int index) {
+        if (scrollbackBuffer == null || index < 0 || index >= scrollbackCount) {
+            return null;
+        }
+        int capacity = scrollbackBuffer.length;
+        int actualIndex = (scrollbackHead + index) % capacity;
+        return scrollbackBuffer[actualIndex];
+    }
+
+    private void ensureScrollbackCapacity(int capacity) {
+        if (capacity <= 0) {
+            scrollbackBuffer = null;
+            scrollbackHead = 0;
+            scrollbackCount = 0;
+            return;
+        }
+        if (scrollbackBuffer == null || scrollbackBuffer.length != capacity) {
+            rebuildScrollbackBuffer();
+        }
+    }
+
+    private void rebuildScrollbackBuffer() {
+        if (maxScrollbackLines <= 0) {
+            scrollbackBuffer = null;
+            scrollbackHead = 0;
+            scrollbackCount = 0;
+            clearVisibleLineCache();
+            return;
+        }
+        ScrollbackLine[] newBuffer = new ScrollbackLine[maxScrollbackLines];
+        int keep = Math.min(scrollbackCount, maxScrollbackLines);
+        int start = Math.max(0, scrollbackCount - keep);
+        for (int i = 0; i < keep; i++) {
+            ScrollbackLine line = getScrollbackLine(start + i);
+            newBuffer[i] = line;
+        }
+        scrollbackBuffer = newBuffer;
+        scrollbackHead = 0;
+        scrollbackCount = keep;
+        scrollOffsetLines = Math.max(0, Math.min(scrollOffsetLines, getMaxScrollOffset()));
+        clearVisibleLineCache();
+    }
+
+    private void ensureVisibleLineCache(int baseRow, int cols, int rows) {
+        if (rows <= 0 || cols <= 0) {
+            visibleLineCache = null;
+            visibleHighRiskCache = null;
+            visibleSearchMatchCache = null;
+            visibleSearchMatchCount = null;
+            visibleSearchQueryLower = null;
+            visibleCacheBaseRow = -1;
+            visibleCacheCols = -1;
+            visibleCacheRows = -1;
+            return;
+        }
+        if (visibleLineCache == null
+                || visibleCacheBaseRow != baseRow
+                || visibleCacheCols != cols
+                || visibleCacheRows != rows) {
+            visibleLineCache = new String[rows];
+            visibleHighRiskCache = new Boolean[rows];
+            visibleSearchMatchCache = new int[rows][];
+            visibleSearchMatchCount = new int[rows];
+            visibleSearchQueryLower = null;
+            visibleCacheBaseRow = baseRow;
+            visibleCacheCols = cols;
+            visibleCacheRows = rows;
+        }
+    }
+
+    private void cacheVisibleLine(int row, String line) {
+        if (visibleLineCache == null) return;
+        if (row < 0 || row >= visibleCacheRows) return;
+        visibleLineCache[row] = line;
+    }
+
+    private void invalidateVisibleLineCache(int startRow, int endRow) {
+        if (visibleLineCache == null) return;
+        int start = Math.max(0, Math.min(visibleCacheRows - 1, startRow));
+        int end = Math.max(0, Math.min(visibleCacheRows - 1, endRow));
+        for (int i = start; i <= end; i++) {
+            visibleLineCache[i] = null;
+            if (visibleHighRiskCache != null) {
+                visibleHighRiskCache[i] = null;
+            }
+            if (visibleSearchMatchCache != null) {
+                visibleSearchMatchCache[i] = null;
+            }
+            if (visibleSearchMatchCount != null) {
+                visibleSearchMatchCount[i] = 0;
+            }
+        }
+    }
+
+    private void clearVisibleLineCache() {
+        visibleLineCache = null;
+        visibleHighRiskCache = null;
+        visibleSearchMatchCache = null;
+        visibleSearchMatchCount = null;
+        visibleSearchQueryLower = null;
+        visibleCacheBaseRow = -1;
+        visibleCacheCols = -1;
+        visibleCacheRows = -1;
+    }
+
+    private void clearVisibleSearchCache() {
+        visibleSearchQueryLower = null;
+        if (visibleSearchMatchCache == null || visibleSearchMatchCount == null) return;
+        for (int i = 0; i < visibleSearchMatchCache.length; i++) {
+            visibleSearchMatchCache[i] = null;
+            visibleSearchMatchCount[i] = 0;
+        }
+    }
+
+    private void invalidateVisibleSearchCache(int startRow, int endRow) {
+        if (visibleSearchMatchCache == null || visibleSearchMatchCount == null) return;
+        int start = Math.max(0, Math.min(visibleCacheRows - 1, startRow));
+        int end = Math.max(0, Math.min(visibleCacheRows - 1, endRow));
+        for (int i = start; i <= end; i++) {
+            visibleSearchMatchCache[i] = null;
+            visibleSearchMatchCount[i] = 0;
+        }
+    }
+
+    private int getSearchMatchesForRow(int row, int cols, String lowerSearch) {
+        int baseRow = getDisplayBaseRow();
+        int rows = getVisibleRowCount();
+        ensureVisibleLineCache(baseRow, cols, rows);
+        if (visibleSearchMatchCache == null || visibleSearchMatchCount == null) return 0;
+        if (visibleSearchQueryLower == null || !visibleSearchQueryLower.equals(lowerSearch)) {
+            visibleSearchQueryLower = lowerSearch;
+            clearVisibleSearchCache();
+        }
+        if (row < 0 || row >= visibleCacheRows) return 0;
+        if (visibleSearchMatchCache[row] != null) {
+            return visibleSearchMatchCount[row];
+        }
+        String line = buildDisplayLine(row, cols);
+        String lowerLine = line.toLowerCase(java.util.Locale.getDefault());
+        int[] matches = new int[Math.max(1, line.length() / Math.max(1, lowerSearch.length()))];
+        int count = 0;
+        int startIndex = 0;
+        while (startIndex < line.length()) {
+            int matchIndex = lowerLine.indexOf(lowerSearch, startIndex);
+            if (matchIndex == -1) break;
+            if (count >= matches.length) {
+                int[] expanded = new int[matches.length * 2];
+                System.arraycopy(matches, 0, expanded, 0, matches.length);
+                matches = expanded;
+            }
+            matches[count++] = matchIndex;
+            startIndex = matchIndex + 1;
+        }
+        if (count == 0) {
+            visibleSearchMatchCache[row] = new int[0];
+            visibleSearchMatchCount[row] = 0;
+            return 0;
+        }
+        int[] trimmed = new int[count];
+        System.arraycopy(matches, 0, trimmed, 0, count);
+        visibleSearchMatchCache[row] = trimmed;
+        visibleSearchMatchCount[row] = count;
+        return count;
     }
 
     private int dpToPx(int dp) {

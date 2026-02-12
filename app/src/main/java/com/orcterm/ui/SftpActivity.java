@@ -25,6 +25,7 @@ import android.widget.ProgressBar;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
@@ -54,6 +55,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * SFTP 文件管理 Activity
@@ -64,6 +66,8 @@ public class SftpActivity extends AppCompatActivity {
     private static final int REQUEST_CODE_UPLOAD = 1001;
     private static final int REQUEST_CODE_EDIT = 1002;
     private static final int REQUEST_CODE_UPLOAD_FOLDER = 1003;
+    private static final int LIST_PAGE_SIZE = 200;
+    private static final int LIST_PAGE_PREFETCH = 40;
 
     private RecyclerView recyclerView;
     private SwipeRefreshLayout swipeRefresh;
@@ -104,6 +108,12 @@ public class SftpActivity extends AppCompatActivity {
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final AtomicInteger loadSequence = new AtomicInteger(0);
+    private volatile int activeLoadToken = 0;
+    private List<SftpFile> pendingFiles = null;
+    private int pendingIndex = 0;
+    private int pendingToken = 0;
+    private boolean isAppendingPage = false;
 
     private android.view.ActionMode actionMode;
     private BroadcastReceiver transferReceiver;
@@ -330,6 +340,13 @@ public class SftpActivity extends AppCompatActivity {
         
         updateLayoutManager(iconSize);
         recyclerView.setAdapter(adapter);
+        recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+                if (dy <= 0) return;
+                maybeAppendNextPage();
+            }
+        });
 
         hostname = getIntent().getStringExtra("hostname");
         port = getIntent().getIntExtra("port", 22);
@@ -379,6 +396,9 @@ public class SftpActivity extends AppCompatActivity {
                     String remotePath = intent.getStringExtra(SftpTransferService.EXTRA_REMOTE_PATH);
                     if (message != null && !message.isEmpty()) {
                         Toast.makeText(SftpActivity.this, message, Toast.LENGTH_SHORT).show();
+                        if (transferPanel.getVisibility() == View.VISIBLE) {
+                            transferSubtitle.setText(message);
+                        }
                     }
                     if (remotePath != null && !remotePath.isEmpty()) {
                         showReloadRestartPrompt(remotePath);
@@ -1326,6 +1346,15 @@ public class SftpActivity extends AppCompatActivity {
 
     private void ensureConnected() throws Exception {
         if (sshHandle == 0) {
+            TerminalSession session = SessionManager.getInstance().findConnectedSession(hostname, port, username);
+            if (session != null) {
+                long handle = session.getHandle();
+                if (handle != 0) {
+                    sshHandle = handle;
+                    isSharedSession = true;
+                    return;
+                }
+            }
             sshHandle = sshNative.connect(hostname, port);
             if (sshHandle == 0) throw new Exception(getString(R.string.err_connect_fail));
             
@@ -1348,6 +1377,8 @@ public class SftpActivity extends AppCompatActivity {
 
     private void loadFiles(String path) {
         if (!swipeRefresh.isRefreshing()) progressBar.setVisibility(View.VISIBLE);
+        int token = loadSequence.incrementAndGet();
+        activeLoadToken = token;
         
         executor.execute(() -> {
             try {
@@ -1406,24 +1437,87 @@ public class SftpActivity extends AppCompatActivity {
                     return result;
                 });
                 
-                currentPath = path;
-                
                 mainHandler.post(() -> {
+                    if (token != activeLoadToken) return;
                     progressBar.setVisibility(View.GONE);
                     swipeRefresh.setRefreshing(false);
+                    currentPath = path;
                     getSupportActionBar().setSubtitle(currentPath);
                     updatePathSegments();
-                    adapter.setFiles(list);
+                    if (list.size() <= LIST_PAGE_SIZE) {
+                        adapter.setFiles(list);
+                        clearPendingFiles();
+                    } else {
+                        List<SftpFile> first = new ArrayList<>(list.subList(0, LIST_PAGE_SIZE));
+                        adapter.setFiles(first);
+                        pendingFiles = list;
+                        pendingIndex = LIST_PAGE_SIZE;
+                        pendingToken = token;
+                        isAppendingPage = false;
+                    }
                 });
                 
             } catch (Exception e) {
                 mainHandler.post(() -> {
+                    if (token != activeLoadToken) return;
                     progressBar.setVisibility(View.GONE);
                     swipeRefresh.setRefreshing(false);
                     Toast.makeText(SftpActivity.this, String.format(getString(R.string.msg_error), e.getMessage()), Toast.LENGTH_SHORT).show();
                 });
             }
         });
+    }
+
+    private void scheduleRemainingFiles(List<SftpFile> list, int start, int token) {
+        if (token != activeLoadToken) return;
+        if (list == null || list.isEmpty()) return;
+        int total = list.size();
+        if (start >= total) return;
+        int end = Math.min(total, start + LIST_PAGE_SIZE);
+        List<SftpFile> chunk = new ArrayList<>(list.subList(start, end));
+        adapter.appendFiles(chunk);
+        if (end < total) {
+            mainHandler.post(() -> scheduleRemainingFiles(list, end, token));
+        }
+    }
+
+    private void maybeAppendNextPage() {
+        if (pendingFiles == null || pendingFiles.isEmpty()) return;
+        if (pendingToken != activeLoadToken) {
+            clearPendingFiles();
+            return;
+        }
+        if (isAppendingPage) return;
+        RecyclerView.LayoutManager lm = recyclerView.getLayoutManager();
+        if (!(lm instanceof androidx.recyclerview.widget.LinearLayoutManager)) return;
+        int lastVisible = ((androidx.recyclerview.widget.LinearLayoutManager) lm).findLastVisibleItemPosition();
+        if (lastVisible < 0) return;
+        if (lastVisible < adapter.getItemCount() - LIST_PAGE_PREFETCH) return;
+        appendNextPage();
+    }
+
+    private void appendNextPage() {
+        if (pendingFiles == null) return;
+        if (pendingIndex >= pendingFiles.size()) {
+            clearPendingFiles();
+            return;
+        }
+        isAppendingPage = true;
+        int end = Math.min(pendingFiles.size(), pendingIndex + LIST_PAGE_SIZE);
+        List<SftpFile> chunk = new ArrayList<>(pendingFiles.subList(pendingIndex, end));
+        pendingIndex = end;
+        adapter.appendFiles(chunk);
+        isAppendingPage = false;
+        if (pendingIndex >= pendingFiles.size()) {
+            clearPendingFiles();
+        }
+    }
+
+    private void clearPendingFiles() {
+        pendingFiles = null;
+        pendingIndex = 0;
+        pendingToken = 0;
+        isAppendingPage = false;
     }
     
     @Override

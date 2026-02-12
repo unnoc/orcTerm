@@ -4,6 +4,11 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.ViewModel;
 
+import com.orcterm.data.HostStatus;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * 底部导航状态模型
  */
@@ -11,6 +16,7 @@ public class NavViewModel extends ViewModel {
 
     private final MutableLiveData<Integer> selectedIndex = new MutableLiveData<>(0);
     private final MutableLiveData<Long> currentHostId = new MutableLiveData<>(null);
+    private final Map<Long, HostStatus> hostStatusCache = new ConcurrentHashMap<>();
 
     public LiveData<Integer> getSelectedIndex() {
         return selectedIndex;
@@ -26,5 +32,19 @@ public class NavViewModel extends ViewModel {
 
     public void setCurrentHostId(Long hostId) {
         currentHostId.setValue(hostId);
+    }
+
+    public Map<Long, HostStatus> getHostStatusCache() {
+        return hostStatusCache;
+    }
+
+    public void putHostStatus(long hostId, HostStatus status) {
+        if (status != null) {
+            hostStatusCache.put(hostId, status);
+        }
+    }
+
+    public void clearHostStatusCache() {
+        hostStatusCache.clear();
     }
 }

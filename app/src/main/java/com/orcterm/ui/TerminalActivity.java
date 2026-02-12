@@ -235,6 +235,8 @@ public class TerminalActivity extends AppCompatActivity {
     private SessionLogManager sessionLogManager;
     private CommandHistoryManager commandHistoryManager;
     private boolean sessionLoggingEnabled = true;
+    // 会话日志是否已启动
+    private boolean sessionLogActive = false;
     private boolean commandCompletionEnabled = true;
     
     // 命令自动补全 UI
@@ -1161,6 +1163,10 @@ public class TerminalActivity extends AppCompatActivity {
             if (hasParams) {
                 session = new TerminalSession();
                 session.setHostKeyVerifier(createHostKeyVerifier());
+                if (sessionLoggingEnabled) {
+                    startSessionLogging(resolved.host, resolved.port, resolved.user);
+                    logSessionEvent("连接中", resolved.host, resolved.port, resolved.user);
+                }
                 session.connect(resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
                 SessionManager.getInstance().upsertSession(
                     new SessionInfo(container.id, container.name, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath, false),
@@ -2327,6 +2333,8 @@ public class TerminalActivity extends AppCompatActivity {
             if (sessionLoggingEnabled && container.session != null) {
                 startSessionLogging(container.session.getHost(), 
                     container.session.getPort(), container.session.getUsername());
+                logSessionEvent("连接成功", container.session.getHost(),
+                    container.session.getPort(), container.session.getUsername());
             }
             
             if (container == activeContainer) {
@@ -2347,6 +2355,10 @@ public class TerminalActivity extends AppCompatActivity {
             // 停止会话日志记录
             if (sessionLoggingEnabled) {
                 stopSessionLogging();
+                if (container.session != null) {
+                    logSessionEvent("连接断开", container.session.getHost(),
+                        container.session.getPort(), container.session.getUsername());
+                }
             }
         });
     }
@@ -2371,6 +2383,9 @@ public class TerminalActivity extends AppCompatActivity {
             container.view.append("Error: " + message + "\r\n");
             containerAdapter.notifyDataSetChanged();
         });
+        if (sessionLoggingEnabled) {
+            logSessionEvent("连接错误", buildSessionErrorMessage(message));
+        }
     }
 }
 
@@ -2681,6 +2696,10 @@ public class TerminalActivity extends AppCompatActivity {
 
             TerminalSession session = new TerminalSession();
             session.setHostKeyVerifier(createHostKeyVerifier());
+            if (sessionLoggingEnabled) {
+                startSessionLogging(params.host, params.port, params.user);
+                logSessionEvent("重连中", params.host, params.port, params.user);
+            }
             session.connect(params.host, params.port, params.user, params.password, params.authType, params.keyPath);
 
             for (TerminalContainer c : targets) {
@@ -3268,20 +3287,90 @@ public class TerminalActivity extends AppCompatActivity {
     // ==================== 会话日志功能 ====================
     
     private void startSessionLogging(String hostname, int port, String username) {
-        if (sessionLoggingEnabled && sessionLogManager != null) {
+        if (sessionLoggingEnabled && sessionLogManager != null && !sessionLogActive) {
             sessionLogManager.startSession(hostname, port, username);
+            sessionLogActive = true;
         }
     }
     
     private void stopSessionLogging() {
         if (sessionLogManager != null) {
             sessionLogManager.endSession();
+            sessionLogActive = false;
         }
     }
     
     private void logSessionOutput(String data) {
         if (sessionLoggingEnabled && sessionLogManager != null) {
             sessionLogManager.writeLog(data);
+        }
+    }
+
+    /**
+     * 生成连接错误的日志详情
+     */
+    private String buildSessionErrorMessage(String message) {
+        String raw = message == null ? "" : message;
+        String reason = resolveSessionErrorReason(raw);
+        if (TextUtils.isEmpty(raw)) {
+            return reason;
+        }
+        if ("未知错误".equals(reason)) {
+            return raw;
+        }
+        return reason + "：" + raw;
+    }
+
+    /**
+     * 解析连接错误类型
+     */
+    private String resolveSessionErrorReason(String message) {
+        String lower = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        if (lower.contains("authentication failed")) {
+            return "认证失败";
+        }
+        if (lower.contains("host key verification failed")) {
+            return "主机指纹校验失败";
+        }
+        if (lower.contains("connection failed") || lower.contains("connect error")) {
+            return "连接失败";
+        }
+        if (lower.contains("timeout")) {
+            return "连接超时";
+        }
+        if (lower.contains("host is empty")) {
+            return "主机为空";
+        }
+        if (lower.contains("user is empty")) {
+            return "用户名为空";
+        }
+        if (lower.contains("password is empty")) {
+            return "密码为空";
+        }
+        if (lower.contains("key path is empty")) {
+            return "密钥路径为空";
+        }
+        if (lower.contains("read error")) {
+            return "读取错误";
+        }
+        return "未知错误";
+    }
+
+    /**
+     * 记录会话事件日志
+     */
+    private void logSessionEvent(String event, String detail) {
+        if (sessionLoggingEnabled && sessionLogManager != null) {
+            sessionLogManager.writeLog("[" + event + "] " + detail);
+        }
+    }
+
+    /**
+     * 记录会话事件日志（包含主机信息）
+     */
+    private void logSessionEvent(String event, String host, int port, String username) {
+        if (sessionLoggingEnabled && sessionLogManager != null) {
+            sessionLogManager.writeLog("[" + event + "] " + username + "@" + host + ":" + port);
         }
     }
     

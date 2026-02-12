@@ -23,7 +23,9 @@ import com.orcterm.core.docker.DockerContainer;
 import com.orcterm.core.docker.DockerImage;
 import com.orcterm.core.docker.DockerNetwork;
 import com.orcterm.core.docker.DockerVolume;
+import com.orcterm.core.session.SessionManager;
 import com.orcterm.core.ssh.SshNative;
+import com.orcterm.core.terminal.TerminalSession;
 import com.orcterm.util.CommandConstants;
 
 import org.json.JSONArray;
@@ -68,6 +70,7 @@ public class DockerActivity extends AppCompatActivity {
     
     private SshNative sshNative;
     private long sshHandle = 0;
+    private boolean isSharedSession = false;
     
     private List<DockerContainer> containerList = new ArrayList<>();
     
@@ -307,8 +310,10 @@ public class DockerActivity extends AppCompatActivity {
         super.onDestroy();
         stopStatsTimer();
         if (sshHandle != 0) {
-            final long handle = sshHandle;
-            new Thread(() -> sshNative.disconnect(handle)).start();
+            if (!isSharedSession) {
+                final long handle = sshHandle;
+                new Thread(() -> sshNative.disconnect(handle)).start();
+            }
         }
         executor.shutdownNow();
     }
@@ -403,6 +408,15 @@ public class DockerActivity extends AppCompatActivity {
             throw new Exception("User is empty");
         }
         if (sshHandle == 0) {
+            TerminalSession session = SessionManager.getInstance().findConnectedSession(hostname, port, username);
+            if (session != null) {
+                long handle = session.getHandle();
+                if (handle != 0) {
+                    sshHandle = handle;
+                    isSharedSession = true;
+                    return;
+                }
+            }
             sshHandle = sshNative.connect(hostname, port);
             if (sshHandle == 0) throw new Exception("Connect failed");
             

@@ -255,6 +255,14 @@
     <string name="msg_transfer_canceled">Transfer canceled</string>
     <string name="msg_transfer_cancel_requested">Cancel requested</string>
     <string name="msg_transfer_retrying_fmt">Transfer failed, retrying: %1$s (remaining %2$d)</string>
+    <string name="msg_transfer_retrying_reason_fmt">Transfer failed, retrying: %1$s (reason: %2$s, remaining %3$d)</string>
+    <string name="msg_transfer_failed_reason_fmt">Transfer failed (reason: %1$s): %2$s</string>
+    <string name="msg_transfer_reason_network">Network or connection issue</string>
+    <string name="msg_transfer_reason_auth">Authentication failed</string>
+    <string name="msg_transfer_reason_permission">Permission denied</string>
+    <string name="msg_transfer_reason_not_found">Path not found</string>
+    <string name="msg_transfer_reason_storage">Insufficient storage</string>
+    <string name="msg_transfer_reason_unknown">Unknown error</string>
     <string name="msg_transfer_no_active">No active transfer</string>
     <string name="notification_transfer_title">File Transfer</string>
     <string name="notification_transfer_content">Transferring files</string>

@@ -78,6 +78,31 @@ public class SessionManager {
     public TerminalSession getTerminalSession(long id) {
         return sessionMap.get(id);
     }
+
+    public TerminalSession findConnectedSession(String host, int port, String username) {
+        if (host == null || username == null) {
+            return null;
+        }
+        for (SessionInfo info : sessions) {
+            if (info == null) {
+                continue;
+            }
+            if (info.port != port) {
+                continue;
+            }
+            if (!host.equals(info.hostname)) {
+                continue;
+            }
+            if (!username.equals(info.username)) {
+                continue;
+            }
+            TerminalSession session = sessionMap.get(info.id);
+            if (session != null && session.isConnected() && session.getHandle() != 0) {
+                return session;
+            }
+        }
+        return null;
+    }
     
     // 临时保存来自主机详情的共享句柄，供终端会话接管
     public void putSharedHandle(long sessionId, long handle) {

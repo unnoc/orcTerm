@@ -89,6 +89,9 @@ public class HostDetailActivity extends AppCompatActivity {
     private long prevCpuTotal = 0, prevCpuWork = 0;
     private long prevNetRx = 0, prevNetTx = 0;
     private long prevTimestamp = 0;
+    private String lastSavedOsVersion = "";
+    private long lastOsSaveTime = 0;
+    private static final long OS_INFO_SAVE_INTERVAL_MS = 30000;
 
     private static class DiskInfo {
         String filesystem;
@@ -320,6 +323,12 @@ public class HostDetailActivity extends AppCompatActivity {
             
             // Save to DB
             if (hostId != -1 && !finalRelease.isEmpty()) {
+                long now = System.currentTimeMillis();
+                if (finalRelease.equals(lastSavedOsVersion) && now - lastOsSaveTime < OS_INFO_SAVE_INTERVAL_MS) {
+                    return;
+                }
+                lastSavedOsVersion = finalRelease;
+                lastOsSaveTime = now;
                 AppDatabase.databaseWriteExecutor.execute(() -> {
                     HostEntity entity = AppDatabase.getDatabase(this).hostDao().findById(hostId);
                     if (entity != null) {

@@ -50,6 +50,9 @@ public class TerminalSession {
     private final StringBuilder pendingData = new StringBuilder();
     private boolean pendingUpdateScheduled = false;
     private long lastKeepaliveTime = 0;
+    private final StringBuilder readBuffer = new StringBuilder();
+    private long lastReadDispatchTime = 0;
+    private static final int READ_BATCH_SIZE = 2048;
     
     // 创建带日志功能的自定义线程池
     private static final ThreadFactory TERMINAL_THREAD_FACTORY = new ThreadFactory() {
@@ -222,10 +225,24 @@ public class TerminalSession {
             try {
                 int read = transport.read(buffer);
                 if (read > 0) {
-                    String data = new String(buffer, 0, read);
-                    Log.d(LOG_TAG, "read bytes=" + read);
-                    notifyData(data);
+                    readBuffer.append(new String(buffer, 0, read));
+                    long now = System.currentTimeMillis();
+                    if (readBuffer.length() >= READ_BATCH_SIZE || now - lastReadDispatchTime >= MIN_FRAME_TIME) {
+                        String data = readBuffer.toString();
+                        readBuffer.setLength(0);
+                        lastReadDispatchTime = now;
+                        notifyData(data);
+                    }
                 } else {
+                     if (readBuffer.length() > 0) {
+                         long now = System.currentTimeMillis();
+                         if (now - lastReadDispatchTime >= MIN_FRAME_TIME) {
+                             String data = readBuffer.toString();
+                             readBuffer.setLength(0);
+                             lastReadDispatchTime = now;
+                             notifyData(data);
+                         }
+                     }
                      // 非阻塞传输没有数据，稍作休眠
                      try {
                          Thread.sleep(10); 
@@ -252,6 +269,11 @@ public class TerminalSession {
                 }
                 break;
             }
+        }
+        if (readBuffer.length() > 0) {
+            String data = readBuffer.toString();
+            readBuffer.setLength(0);
+            notifyData(data);
         }
         Log.i(LOG_TAG, "read loop exit -> disconnect");
         disconnect();

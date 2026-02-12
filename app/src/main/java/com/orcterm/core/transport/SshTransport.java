@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * SSH 传输层实现
@@ -28,13 +30,19 @@ public class SshTransport implements Transport {
     
     // 端口转发相关资源
     private final List<ServerSocket> forwardingSockets = new ArrayList<>();
-    private final ExecutorService forwardExecutor = Executors.newCachedThreadPool();
+    private final int forwardPoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
+    private final ExecutorService forwardExecutor = Executors.newFixedThreadPool(forwardPoolSize);
     private final ConcurrentHashMap<String, Boolean> activeForwards = new ConcurrentHashMap<>();
     private HostKeyVerifier hostKeyVerifier;
     private int keepaliveIntervalSec = 0;
 
     public SshTransport() {
         this.sshNative = new SshNative();
+        if (forwardExecutor instanceof ThreadPoolExecutor) {
+            ThreadPoolExecutor pool = (ThreadPoolExecutor) forwardExecutor;
+            pool.setKeepAliveTime(30, TimeUnit.SECONDS);
+            pool.allowCoreThreadTimeOut(true);
+        }
     }
 
     public void setHostKeyVerifier(HostKeyVerifier verifier) {

@@ -94,6 +94,13 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder
         notifyDataSetChanged();
     }
 
+    public void appendFiles(List<SftpFile> list) {
+        if (list == null || list.isEmpty()) return;
+        int start = files.size();
+        files.addAll(list);
+        notifyItemRangeInserted(start, list.size());
+    }
+
     @NonNull
     @Override
     public FileViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
