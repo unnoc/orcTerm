@@ -8,6 +8,7 @@
 - [构建系统](#构建系统)
 - [真实 SSH 连接库](#真实-ssh-连接库)
 - [真实 SSH 实现指南](#真实-ssh-实现指南)
+- [云端同步后端](#云端同步后端)
 - [二维码分享功能](#二维码分享功能)
 - [二维码解析问题修复总结](#二维码解析问题修复总结)
 - [项目分析报告](#项目分析报告)
@@ -340,6 +341,21 @@ target_link_libraries(orcterm-jni
 1.  **线程安全**: 所有 JNI 调用都是阻塞或半阻塞的。必须确保它们在工作线程（Worker Threads）中被调用，严禁在 UI 线程（Main Thread）中直接调用 Native 方法。
 2.  **错误处理**: 检查 `libssh2` 函数的返回值。负值通常表示错误（如 `LIBSSH2_ERROR_SOCKET_NONE`）。
 3.  **内存管理**: 确保在断开连接时释放 `SshContext` 结构体及相关 Session/Channel 资源，防止内存泄漏。
+
+## 云端同步后端
+
+### 功能概述
+- 后端模块位于 `orcTerm-backend`，提供账户注册、登录与数据同步接口。
+- 认证使用服务端生成的同步令牌（非 JWT），通过 `Authorization: Bearer <token>` 访问同步接口。
+- 数据同步以 `updatedAt` 为准进行冲突判定，冲突项将返回给客户端处理。
+
+### 接口说明
+- `POST /auth/register`、`POST /auth/login`：返回 `token` 与 `expiresAt`。
+- `GET /sync/status`：返回 `serverTime`、`lastUpdatedAt`、`totalCount`。
+- `GET /sync/pull?since=0&limit=200&types=note,macro`：
+  - 返回 `items`、`serverTime`、`hasMore`、`nextSince`。
+- `POST /sync/push`：
+  - 请求体为 `changes` 列表，返回 `accepted`、`conflicts`、`skipped`、`serverTime`。
 
 ## 二维码分享功能
 
@@ -824,4 +840,4 @@ TerminalActivity
 3.  **阶段三：高级特性**
     *   集成 SFTP 文件管理器。
     *   支持 SSH 代理跳转 (Jump Host)。
-    *   云端同步主机配置 (加密存储)。
+    *   云端同步配置加密 (待实现)。
