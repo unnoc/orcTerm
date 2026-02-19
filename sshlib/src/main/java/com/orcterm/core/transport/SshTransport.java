@@ -30,15 +30,23 @@ public class SshTransport implements Transport {
     // 端口转发相关资源
     private final List<ServerSocket> forwardingSockets = new ArrayList<>();
     private final int forwardPoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
-    private final ExecutorService forwardExecutor = Executors.newFixedThreadPool(forwardPoolSize);
+    private final ExecutorService forwardAcceptExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService forwardWorkerExecutor = Executors.newFixedThreadPool(forwardPoolSize);
     private final ConcurrentHashMap<String, Boolean> activeForwards = new ConcurrentHashMap<>();
     private HostKeyVerifier hostKeyVerifier;
     private int keepaliveIntervalSec = 0;
+    private HostKeyPolicy hostKeyPolicy = HostKeyPolicy.TRUST_ON_FIRST_USE;
+
+    public enum HostKeyPolicy {
+        TRUST_ON_FIRST_USE,
+        STRICT,
+        ACCEPT_MISMATCH
+    }
 
     public SshTransport() {
         this.sshNative = new SshNative();
-        if (forwardExecutor instanceof ThreadPoolExecutor) {
-            ThreadPoolExecutor pool = (ThreadPoolExecutor) forwardExecutor;
+        if (forwardWorkerExecutor instanceof ThreadPoolExecutor) {
+            ThreadPoolExecutor pool = (ThreadPoolExecutor) forwardWorkerExecutor;
             pool.setKeepAliveTime(30, TimeUnit.SECONDS);
             pool.allowCoreThreadTimeOut(true);
         }
@@ -46,6 +54,12 @@ public class SshTransport implements Transport {
 
     public void setHostKeyVerifier(HostKeyVerifier verifier) {
         this.hostKeyVerifier = verifier;
+    }
+
+    public void setHostKeyPolicy(HostKeyPolicy policy) {
+        if (policy != null) {
+            this.hostKeyPolicy = policy;
+        }
     }
     
     // 使用已建立的 SSH 句柄接管连接，用于跨界面复用
@@ -60,6 +74,14 @@ public class SshTransport implements Transport {
 
     @Override
     public void connect(String host, int port, String user, String password, int authType, String keyPath) throws Exception {
+        connectInternal(host, port, user, password, authType, keyPath, null);
+    }
+
+    public void connectWithPassphrase(String host, int port, String user, String passphrase, String keyPath) throws Exception {
+        connectInternal(host, port, user, null, 1, keyPath, passphrase);
+    }
+
+    private void connectInternal(String host, int port, String user, String password, int authType, String keyPath, String passphrase) throws Exception {
         android.util.Log.i("SSH_SESSION", "ssh connect host=" + host + " port=" + port + " user=" + user + " auth=" + authType);
         if (host == null || host.trim().isEmpty()) {
             throw new Exception("Host is empty");
@@ -76,7 +98,6 @@ public class SshTransport implements Transport {
                 throw new Exception("Password is empty");
             }
         }
-        // 建立 SSH 连接
         sshHandle = sshNative.connect(host, port);
         if (sshHandle == 0) {
             throw new Exception("Connection failed");
@@ -103,40 +124,47 @@ public class SshTransport implements Transport {
             this.keepaliveIntervalSec = Math.max(0, keepaliveIntervalSec);
         }
 
-        // Host Key Verification
         if (context != null) {
             java.io.File knownHostsFile = new java.io.File(context.getFilesDir(), "known_hosts");
             String knownHostsPath = knownHostsFile.getAbsolutePath();
-            
-            // Check host key
+
             int checkResult = sshNative.knownHostsCheck(sshHandle, host, port, knownHostsPath);
-            
-            // 0: MATCH, 1: MISMATCH, 2: NOTFOUND, 3: FAILURE
+
             if (checkResult != 0) {
                 String fingerprint = sshNative.getHostKeyInfo(sshHandle);
                 boolean trusted = false;
-                
+
                 if (hostKeyVerifier != null) {
                     trusted = hostKeyVerifier.verify(host, port, fingerprint, checkResult);
                 }
-                
+
+                if (checkResult == 1 && hostKeyPolicy == HostKeyPolicy.STRICT) {
+                    trusted = false;
+                } else if (checkResult == 2 && hostKeyPolicy == HostKeyPolicy.STRICT) {
+                    trusted = false;
+                } else if (checkResult == 1 && hostKeyPolicy == HostKeyPolicy.TRUST_ON_FIRST_USE) {
+                    trusted = false;
+                }
+
                 if (!trusted) {
                     sshNative.disconnect(sshHandle);
                     sshHandle = 0;
                     throw new Exception("Host key verification failed");
                 }
-                
-                // If trusted and was not found or mismatch, update known_hosts
-                if (checkResult == 2 || checkResult == 1) { 
+
+                if (checkResult == 2 || checkResult == 1) {
                     sshNative.knownHostsAdd(sshHandle, host, port, knownHostsPath, "");
                 }
             }
         }
 
         int authResult;
-        // 根据认证类型进行认证 (1: 密钥, 0: 密码)
         if (authType == 1 && keyPath != null) {
-            authResult = sshNative.authKey(sshHandle, user, keyPath);
+            if (passphrase != null) {
+                authResult = sshNative.authKeyWithPassphrase(sshHandle, user, keyPath, passphrase);
+            } else {
+                authResult = sshNative.authKey(sshHandle, user, keyPath);
+            }
         } else {
             authResult = sshNative.authPassword(sshHandle, user, password);
         }
@@ -147,7 +175,6 @@ public class SshTransport implements Transport {
             throw new Exception("Authentication failed");
         }
 
-        // 打开 Shell，默认大小，稍后会调整
         sshNative.openShell(sshHandle, 80, 24);
         connected = true;
         android.util.Log.i("SSH_SESSION", "ssh connected handle=" + sshHandle);
@@ -161,7 +188,8 @@ public class SshTransport implements Transport {
             sshHandle = 0;
         }
         connected = false;
-        forwardExecutor.shutdownNow();
+        forwardAcceptExecutor.shutdownNow();
+        forwardWorkerExecutor.shutdownNow();
         android.util.Log.i("SSH_SESSION", "ssh disconnected");
     }
 
@@ -210,6 +238,27 @@ public class SshTransport implements Transport {
         return keepaliveIntervalSec;
     }
 
+    public String execWithResult(String command) throws Exception {
+        if (!connected || sshHandle == 0) {
+            throw new Exception("SSH not connected");
+        }
+        return sshNative.execWithResult(sshHandle, command);
+    }
+
+    public int sftpUpload(String localPath, String remotePath) throws Exception {
+        if (!connected || sshHandle == 0) {
+            throw new Exception("SSH not connected");
+        }
+        return sshNative.sftpUpload(sshHandle, localPath, remotePath);
+    }
+
+    public int sftpDownload(String remotePath, String localPath) throws Exception {
+        if (!connected || sshHandle == 0) {
+            throw new Exception("SSH not connected");
+        }
+        return sshNative.sftpDownload(sshHandle, remotePath, localPath);
+    }
+
     // --- 端口转发功能 ---
 
     /**
@@ -235,8 +284,7 @@ public class SshTransport implements Transport {
         forwardingSockets.add(serverSocket);
         activeForwards.put(key, true);
 
-        // 异步处理转发连接
-        forwardExecutor.execute(() -> {
+        forwardAcceptExecutor.execute(() -> {
             try {
                 while (connected && !serverSocket.isClosed()) {
                     Socket clientSocket = serverSocket.accept();
@@ -255,10 +303,9 @@ public class SshTransport implements Transport {
      * 在本地 Socket 和 SSH 通道之间建立数据传输。
      */
     private void handleForwardConnection(Socket clientSocket, String targetHost, int targetPort) {
-        forwardExecutor.execute(() -> {
+        forwardWorkerExecutor.execute(() -> {
             long channel = 0;
             try {
-                // 打开直接 TCP/IP 通道
                 channel = sshNative.openDirectTcpIp(sshHandle, targetHost, targetPort);
                 if (channel == 0) {
                     clientSocket.close();
@@ -269,8 +316,7 @@ public class SshTransport implements Transport {
                 final InputStream socketIn = clientSocket.getInputStream();
                 final OutputStream socketOut = clientSocket.getOutputStream();
 
-                // 线程: Socket -> SSH Channel
-                forwardExecutor.execute(() -> {
+                forwardWorkerExecutor.execute(() -> {
                     try {
                         byte[] buffer = new byte[8192];
                         int read;
@@ -286,8 +332,6 @@ public class SshTransport implements Transport {
                     }
                 });
 
-                // 线程: SSH Channel -> Socket
-                // 使用当前线程处理读取
                 try {
                     while (connected && !clientSocket.isClosed()) {
                         byte[] data = sshNative.readChannel(sshHandle, channelHandle);
@@ -315,6 +359,187 @@ public class SshTransport implements Transport {
                 try { clientSocket.close(); } catch (Exception ignored) {}
             }
         });
+    }
+
+    public void startDynamicForwarding(int localPort) throws IOException {
+        if (!connected || sshHandle == 0) {
+            throw new IOException("SSH not connected");
+        }
+        String key = "dynamic:" + localPort;
+        if (activeForwards.containsKey(key)) {
+            return;
+        }
+        ServerSocket serverSocket = new ServerSocket(localPort);
+        forwardingSockets.add(serverSocket);
+        activeForwards.put(key, true);
+        forwardAcceptExecutor.execute(() -> {
+            try {
+                while (connected && !serverSocket.isClosed()) {
+                    Socket clientSocket = serverSocket.accept();
+                    handleDynamicForwardConnection(clientSocket);
+                }
+            } catch (IOException e) {
+            } finally {
+                activeForwards.remove(key);
+            }
+        });
+    }
+
+    private void handleDynamicForwardConnection(Socket clientSocket) {
+        forwardWorkerExecutor.execute(() -> {
+            long channel = 0;
+            try {
+                InputStream socketIn = clientSocket.getInputStream();
+                OutputStream socketOut = clientSocket.getOutputStream();
+
+                int version = socketIn.read();
+                if (version != 0x05) {
+                    clientSocket.close();
+                    return;
+                }
+                int nMethods = socketIn.read();
+                if (nMethods <= 0) {
+                    clientSocket.close();
+                    return;
+                }
+                byte[] methods = readFully(socketIn, nMethods);
+                if (methods == null) {
+                    clientSocket.close();
+                    return;
+                }
+                socketOut.write(new byte[] {0x05, 0x00});
+                socketOut.flush();
+
+                int reqVer = socketIn.read();
+                int cmd = socketIn.read();
+                int rsv = socketIn.read();
+                int atyp = socketIn.read();
+                if (reqVer != 0x05 || rsv != 0x00) {
+                    sendSocksFail(socketOut);
+                    clientSocket.close();
+                    return;
+                }
+                if (cmd != 0x01) {
+                    sendSocksFail(socketOut);
+                    clientSocket.close();
+                    return;
+                }
+
+                String host;
+                if (atyp == 0x01) {
+                    byte[] addr = readFully(socketIn, 4);
+                    if (addr == null) {
+                        sendSocksFail(socketOut);
+                        clientSocket.close();
+                        return;
+                    }
+                    host = (addr[0] & 0xff) + "." + (addr[1] & 0xff) + "." + (addr[2] & 0xff) + "." + (addr[3] & 0xff);
+                } else if (atyp == 0x03) {
+                    int len = socketIn.read();
+                    if (len <= 0) {
+                        sendSocksFail(socketOut);
+                        clientSocket.close();
+                        return;
+                    }
+                    byte[] addr = readFully(socketIn, len);
+                    if (addr == null) {
+                        sendSocksFail(socketOut);
+                        clientSocket.close();
+                        return;
+                    }
+                    host = new String(addr);
+                } else if (atyp == 0x04) {
+                    byte[] addr = readFully(socketIn, 16);
+                    if (addr == null) {
+                        sendSocksFail(socketOut);
+                        clientSocket.close();
+                        return;
+                    }
+                    java.net.InetAddress inetAddress = java.net.InetAddress.getByAddress(addr);
+                    host = inetAddress.getHostAddress();
+                } else {
+                    sendSocksFail(socketOut);
+                    clientSocket.close();
+                    return;
+                }
+
+                byte[] portBytes = readFully(socketIn, 2);
+                if (portBytes == null) {
+                    sendSocksFail(socketOut);
+                    clientSocket.close();
+                    return;
+                }
+                int targetPort = ((portBytes[0] & 0xff) << 8) | (portBytes[1] & 0xff);
+
+                channel = sshNative.openDirectTcpIp(sshHandle, host, targetPort);
+                if (channel == 0) {
+                    sendSocksFail(socketOut);
+                    clientSocket.close();
+                    return;
+                }
+
+                socketOut.write(new byte[] {0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0});
+                socketOut.flush();
+
+                final long channelHandle = channel;
+
+                forwardWorkerExecutor.execute(() -> {
+                    try {
+                        byte[] buffer = new byte[8192];
+                        int read;
+                        while ((read = socketIn.read(buffer)) != -1) {
+                            if (sshNative.writeChannel(sshHandle, channelHandle, java.util.Arrays.copyOf(buffer, read)) < 0) {
+                                break;
+                            }
+                        }
+                    } catch (Exception e) {
+                    } finally {
+                        try { clientSocket.shutdownInput(); } catch (Exception ignored) {}
+                    }
+                });
+
+                try {
+                    while (connected && !clientSocket.isClosed()) {
+                        byte[] data = sshNative.readChannel(sshHandle, channelHandle);
+                        if (data == null) {
+                            break;
+                        }
+                        if (data.length > 0) {
+                            socketOut.write(data);
+                            socketOut.flush();
+                        } else {
+                            Thread.sleep(10);
+                        }
+                    }
+                } catch (Exception e) {
+                } finally {
+                    sshNative.closeChannel(channelHandle);
+                    try { clientSocket.close(); } catch (Exception ignored) {}
+                }
+            } catch (Exception e) {
+                if (channel != 0) sshNative.closeChannel(channel);
+                try { clientSocket.close(); } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    private static byte[] readFully(InputStream in, int len) throws IOException {
+        byte[] data = new byte[len];
+        int read = 0;
+        while (read < len) {
+            int r = in.read(data, read, len - read);
+            if (r == -1) return null;
+            read += r;
+        }
+        return data;
+    }
+
+    private static void sendSocksFail(OutputStream out) {
+        try {
+            out.write(new byte[] {0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0});
+            out.flush();
+        } catch (Exception e) {
+        }
     }
 
     /**

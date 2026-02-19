@@ -42,6 +42,8 @@ public class SshNative {
      */
     public native int authKey(long handle, String user, String privateKeyPath);
 
+    public native int authKeyWithPassphrase(long handle, String user, String privateKeyPath, String passphrase);
+
     /**
      * 打开交互式 Shell 通道
      * 请求 PTY 并启动 Shell。
@@ -74,6 +76,8 @@ public class SshNative {
      */
     public native String exec(long handle, String command);
 
+    public native String execWithResult(long handle, String command);
+
     /**
      * SFTP: 列出目录内容
      *
@@ -82,6 +86,10 @@ public class SshNative {
      * @return JSON 格式的文件列表字符串
      */
     public native String sftpList(long handle, String path);
+
+    public native int sftpUpload(long handle, String localPath, String remotePath);
+
+    public native int sftpDownload(long handle, String remotePath, String localPath);
 
     /**
      * 写入数据到 Shell 通道

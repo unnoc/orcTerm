@@ -46,6 +46,82 @@ typedef struct {
     LIBSSH2_CHANNEL *channel; // 当前活动的 Shell 通道
 } SshContext;
 
+typedef struct {
+    char *data;
+    size_t len;
+    size_t cap;
+} StrBuf;
+
+static void sb_init(StrBuf *sb, size_t initial_cap) {
+    sb->cap = initial_cap < 256 ? 256 : initial_cap;
+    sb->len = 0;
+    sb->data = (char *)malloc(sb->cap);
+    if (sb->data) sb->data[0] = 0;
+}
+
+static void sb_free(StrBuf *sb) {
+    if (sb->data) free(sb->data);
+    sb->data = NULL;
+    sb->len = 0;
+    sb->cap = 0;
+}
+
+static int sb_ensure(StrBuf *sb, size_t add_len) {
+    if (!sb->data) return -1;
+    size_t need = sb->len + add_len + 1;
+    if (need <= sb->cap) return 0;
+    size_t new_cap = sb->cap * 2;
+    while (new_cap < need) new_cap *= 2;
+    char *p = (char *)realloc(sb->data, new_cap);
+    if (!p) return -1;
+    sb->data = p;
+    sb->cap = new_cap;
+    return 0;
+}
+
+static int sb_append(StrBuf *sb, const char *s) {
+    if (!s) return 0;
+    size_t l = strlen(s);
+    if (sb_ensure(sb, l) != 0) return -1;
+    memcpy(sb->data + sb->len, s, l);
+    sb->len += l;
+    sb->data[sb->len] = 0;
+    return 0;
+}
+
+static int sb_append_char(StrBuf *sb, char c) {
+    if (sb_ensure(sb, 1) != 0) return -1;
+    sb->data[sb->len++] = c;
+    sb->data[sb->len] = 0;
+    return 0;
+}
+
+static int sb_append_escaped(StrBuf *sb, const char *s) {
+    if (!s) return 0;
+    const unsigned char *p = (const unsigned char *)s;
+    while (*p) {
+        unsigned char c = *p++;
+        switch (c) {
+            case '\"': if (sb_append(sb, "\\\"") != 0) return -1; break;
+            case '\\': if (sb_append(sb, "\\\\") != 0) return -1; break;
+            case '\b': if (sb_append(sb, "\\b") != 0) return -1; break;
+            case '\f': if (sb_append(sb, "\\f") != 0) return -1; break;
+            case '\n': if (sb_append(sb, "\\n") != 0) return -1; break;
+            case '\r': if (sb_append(sb, "\\r") != 0) return -1; break;
+            case '\t': if (sb_append(sb, "\\t") != 0) return -1; break;
+            default:
+                if (c < 0x20) {
+                    char buf[7];
+                    snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    if (sb_append(sb, buf) != 0) return -1;
+                } else {
+                    if (sb_append_char(sb, (char)c) != 0) return -1;
+                }
+        }
+    }
+    return 0;
+}
+
 static int map_knownhost_key_type(int type) {
     switch (type) {
         case LIBSSH2_HOSTKEY_TYPE_RSA:
@@ -349,6 +425,28 @@ Java_com_orcterm_core_ssh_SshNative_authKey(JNIEnv *env, jobject thiz, jlong han
     return 0;
 }
 
+JNIEXPORT jint JNICALL
+Java_com_orcterm_core_ssh_SshNative_authKeyWithPassphrase(JNIEnv *env, jobject thiz, jlong handle, jstring user, jstring keyPath, jstring passphrase) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return -1;
+
+    const char *u = (*env)->GetStringUTFChars(env, user, 0);
+    const char *k = (*env)->GetStringUTFChars(env, keyPath, 0);
+    const char *p = passphrase ? (*env)->GetStringUTFChars(env, passphrase, 0) : NULL;
+
+    int rc = libssh2_userauth_publickey_fromfile(ctx->session, u, NULL, k, p);
+
+    (*env)->ReleaseStringUTFChars(env, user, u);
+    (*env)->ReleaseStringUTFChars(env, keyPath, k);
+    if (p) (*env)->ReleaseStringUTFChars(env, passphrase, p);
+
+    if (rc != 0) {
+        LOGE("Auth Key(passphrase) failed: %d", rc);
+        return -1;
+    }
+    return 0;
+}
+
 /**
  * 打开 Shell 通道
  */
@@ -389,11 +487,17 @@ Java_com_orcterm_core_ssh_SshNative_write(JNIEnv *env, jobject thiz, jlong handl
     jbyte *body = (*env)->GetByteArrayElements(env, data, 0);
     
     libssh2_session_set_blocking(ctx->session, 1); // 写入时暂时设为阻塞以确保数据发送
-    ssize_t written = libssh2_channel_write(ctx->channel, (const char*)body, len);
+    ssize_t written_total = 0;
+    while (written_total < len) {
+        ssize_t written = libssh2_channel_write(ctx->channel, (const char*)body + written_total, len - written_total);
+        if (written == LIBSSH2_ERROR_EAGAIN) continue;
+        if (written <= 0) break;
+        written_total += written;
+    }
     libssh2_session_set_blocking(ctx->session, 0); // 恢复非阻塞
     
     (*env)->ReleaseByteArrayElements(env, data, body, 0);
-    return (int)written;
+    return (int)written_total;
 }
 
 /**
@@ -461,6 +565,87 @@ Java_com_orcterm_core_ssh_SshNative_exec(JNIEnv *env, jobject thiz, jlong handle
     return jstr;
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_orcterm_core_ssh_SshNative_execWithResult(JNIEnv *env, jobject thiz, jlong handle, jstring command) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return (*env)->NewStringUTF(env, "{\"exitCode\":-1,\"stdout\":\"\",\"stderr\":\"No Context\"}");
+
+    const char *cmd = (*env)->GetStringUTFChars(env, command, 0);
+
+    libssh2_session_set_blocking(ctx->session, 1);
+    LIBSSH2_CHANNEL *channel = libssh2_channel_open_session(ctx->session);
+    if (!channel) {
+        (*env)->ReleaseStringUTFChars(env, command, cmd);
+        libssh2_session_set_blocking(ctx->session, 0);
+        return (*env)->NewStringUTF(env, "{\"exitCode\":-1,\"stdout\":\"\",\"stderr\":\"Open Channel\"}");
+    }
+
+    int exec_rc = libssh2_channel_exec(channel, cmd);
+    (*env)->ReleaseStringUTFChars(env, command, cmd);
+    if (exec_rc != 0) {
+        libssh2_channel_close(channel);
+        libssh2_channel_free(channel);
+        libssh2_session_set_blocking(ctx->session, 0);
+        return (*env)->NewStringUTF(env, "{\"exitCode\":-1,\"stdout\":\"\",\"stderr\":\"Exec Failed\"}");
+    }
+
+    StrBuf out;
+    StrBuf err;
+    sb_init(&out, 1024);
+    sb_init(&err, 256);
+
+    char buffer[2048];
+    while (1) {
+        ssize_t rc_out = libssh2_channel_read_ex(channel, 0, buffer, sizeof(buffer));
+        if (rc_out > 0) {
+            if (sb_ensure(&out, (size_t)rc_out) == 0) {
+                memcpy(out.data + out.len, buffer, (size_t)rc_out);
+                out.len += (size_t)rc_out;
+                out.data[out.len] = 0;
+            }
+        }
+        ssize_t rc_err = libssh2_channel_read_ex(channel, 1, buffer, sizeof(buffer));
+        if (rc_err > 0) {
+            if (sb_ensure(&err, (size_t)rc_err) == 0) {
+                memcpy(err.data + err.len, buffer, (size_t)rc_err);
+                err.len += (size_t)rc_err;
+                err.data[err.len] = 0;
+            }
+        }
+        if (rc_out == LIBSSH2_ERROR_EAGAIN && rc_err == LIBSSH2_ERROR_EAGAIN) {
+            if (libssh2_channel_eof(channel)) break;
+        }
+        if (rc_out <= 0 && rc_err <= 0) {
+            if (libssh2_channel_eof(channel)) break;
+        }
+    }
+
+    int exit_code = libssh2_channel_get_exit_status(channel);
+
+    libssh2_channel_close(channel);
+    libssh2_channel_free(channel);
+    libssh2_session_set_blocking(ctx->session, 0);
+
+    StrBuf json;
+    sb_init(&json, out.len + err.len + 64);
+    sb_append(&json, "{\"exitCode\":");
+    char code_buf[32];
+    snprintf(code_buf, sizeof(code_buf), "%d", exit_code);
+    sb_append(&json, code_buf);
+    sb_append(&json, ",\"stdout\":\"");
+    sb_append_escaped(&json, out.data ? out.data : "");
+    sb_append(&json, "\",\"stderr\":\"");
+    sb_append_escaped(&json, err.data ? err.data : "");
+    sb_append(&json, "\"}");
+
+    jstring result = (*env)->NewStringUTF(env, json.data ? json.data : "{\"exitCode\":-1,\"stdout\":\"\",\"stderr\":\"\"}");
+
+    sb_free(&out);
+    sb_free(&err);
+    sb_free(&json);
+    return result;
+}
+
 /**
  * SFTP 列出目录
  */
@@ -488,10 +673,9 @@ Java_com_orcterm_core_ssh_SshNative_sftpList(JNIEnv *env, jobject thiz, jlong ha
         return (*env)->NewStringUTF(env, "[]");
     }
     
-    // 简单的 JSON 构造
-    // 实际项目中建议使用 cJSON 或类似库，这里手动拼接仅作为示例
-    char *json = malloc(1024 * 1024); // 1MB 缓冲区
-    strcpy(json, "[");
+    StrBuf json;
+    sb_init(&json, 4096);
+    sb_append(&json, "[");
     
     char mem[512];
     LIBSSH2_SFTP_ATTRIBUTES attrs;
@@ -500,31 +684,161 @@ Java_com_orcterm_core_ssh_SshNative_sftpList(JNIEnv *env, jobject thiz, jlong ha
     while(libssh2_sftp_readdir(h, mem, sizeof(mem), &attrs) > 0) {
         if(strcmp(mem, ".") == 0 || strcmp(mem, "..") == 0) continue;
         
-        if(!first) strcat(json, ",");
+        if(!first) sb_append(&json, ",");
         first = 0;
         
         int is_dir = LIBSSH2_SFTP_S_ISDIR(attrs.permissions);
-        char entry[1024];
         char perm_str[11];
         build_perm_string(attrs.permissions, is_dir, perm_str);
         long mtime = (attrs.flags & LIBSSH2_SFTP_ATTR_ACMODTIME) ? (long)attrs.mtime : 0;
-        sprintf(entry, "{\"name\":\"%s\", \"isDir\":%s, \"size\":%ld, \"perm\":\"%s\", \"mtime\":%ld}",
-            mem, is_dir ? "true" : "false", (long)attrs.filesize, perm_str, mtime);
-            
-        if(strlen(json) + strlen(entry) < 1024*1024 - 10) {
-            strcat(json, entry);
-        }
+        char num_buf[64];
+        sb_append(&json, "{\"name\":\"");
+        sb_append_escaped(&json, mem);
+        sb_append(&json, "\",\"isDir\":");
+        sb_append(&json, is_dir ? "true" : "false");
+        sb_append(&json, ",\"size\":");
+        snprintf(num_buf, sizeof(num_buf), "%ld", (long)attrs.filesize);
+        sb_append(&json, num_buf);
+        sb_append(&json, ",\"perm\":\"");
+        sb_append_escaped(&json, perm_str);
+        sb_append(&json, "\",\"mtime\":");
+        snprintf(num_buf, sizeof(num_buf), "%ld", mtime);
+        sb_append(&json, num_buf);
+        sb_append(&json, "}");
     }
-    strcat(json, "]");
+    sb_append(&json, "]");
     
     libssh2_sftp_closedir(h);
     libssh2_sftp_shutdown(sftp);
     libssh2_session_set_blocking(ctx->session, 0);
     (*env)->ReleaseStringUTFChars(env, path, p);
     
-    jstring jstr = (*env)->NewStringUTF(env, json);
-    free(json);
+    jstring jstr = (*env)->NewStringUTF(env, json.data ? json.data : "[]");
+    sb_free(&json);
     return jstr;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_orcterm_core_ssh_SshNative_sftpUpload(JNIEnv *env, jobject thiz, jlong handle, jstring localPath, jstring remotePath) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return -1;
+
+    const char *local = (*env)->GetStringUTFChars(env, localPath, 0);
+    const char *remote = (*env)->GetStringUTFChars(env, remotePath, 0);
+
+    libssh2_session_set_blocking(ctx->session, 1);
+
+    LIBSSH2_SFTP *sftp = libssh2_sftp_init(ctx->session);
+    if (!sftp) {
+        (*env)->ReleaseStringUTFChars(env, localPath, local);
+        (*env)->ReleaseStringUTFChars(env, remotePath, remote);
+        libssh2_session_set_blocking(ctx->session, 0);
+        return -1;
+    }
+
+    LIBSSH2_SFTP_HANDLE *h = libssh2_sftp_open(sftp, remote,
+        LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT | LIBSSH2_FXF_TRUNC,
+        LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR | LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
+    if (!h) {
+        libssh2_sftp_shutdown(sftp);
+        (*env)->ReleaseStringUTFChars(env, localPath, local);
+        (*env)->ReleaseStringUTFChars(env, remotePath, remote);
+        libssh2_session_set_blocking(ctx->session, 0);
+        return -1;
+    }
+
+    FILE *fp = fopen(local, "rb");
+    if (!fp) {
+        libssh2_sftp_close(h);
+        libssh2_sftp_shutdown(sftp);
+        (*env)->ReleaseStringUTFChars(env, localPath, local);
+        (*env)->ReleaseStringUTFChars(env, remotePath, remote);
+        libssh2_session_set_blocking(ctx->session, 0);
+        return -1;
+    }
+
+    char buffer[16384];
+    size_t nread;
+    int rc = 0;
+    while ((nread = fread(buffer, 1, sizeof(buffer), fp)) > 0) {
+        char *ptr = buffer;
+        size_t left = nread;
+        while (left > 0) {
+            ssize_t nw = libssh2_sftp_write(h, ptr, left);
+            if (nw == LIBSSH2_ERROR_EAGAIN) continue;
+            if (nw < 0) { rc = -1; break; }
+            ptr += nw;
+            left -= (size_t)nw;
+        }
+        if (rc != 0) break;
+    }
+
+    fclose(fp);
+    libssh2_sftp_close(h);
+    libssh2_sftp_shutdown(sftp);
+    libssh2_session_set_blocking(ctx->session, 0);
+
+    (*env)->ReleaseStringUTFChars(env, localPath, local);
+    (*env)->ReleaseStringUTFChars(env, remotePath, remote);
+    return rc;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_orcterm_core_ssh_SshNative_sftpDownload(JNIEnv *env, jobject thiz, jlong handle, jstring remotePath, jstring localPath) {
+    SshContext *ctx = (SshContext *)handle;
+    if (!ctx) return -1;
+
+    const char *remote = (*env)->GetStringUTFChars(env, remotePath, 0);
+    const char *local = (*env)->GetStringUTFChars(env, localPath, 0);
+
+    libssh2_session_set_blocking(ctx->session, 1);
+
+    LIBSSH2_SFTP *sftp = libssh2_sftp_init(ctx->session);
+    if (!sftp) {
+        (*env)->ReleaseStringUTFChars(env, remotePath, remote);
+        (*env)->ReleaseStringUTFChars(env, localPath, local);
+        libssh2_session_set_blocking(ctx->session, 0);
+        return -1;
+    }
+
+    LIBSSH2_SFTP_HANDLE *h = libssh2_sftp_open(sftp, remote, LIBSSH2_FXF_READ, 0);
+    if (!h) {
+        libssh2_sftp_shutdown(sftp);
+        (*env)->ReleaseStringUTFChars(env, remotePath, remote);
+        (*env)->ReleaseStringUTFChars(env, localPath, local);
+        libssh2_session_set_blocking(ctx->session, 0);
+        return -1;
+    }
+
+    FILE *fp = fopen(local, "wb");
+    if (!fp) {
+        libssh2_sftp_close(h);
+        libssh2_sftp_shutdown(sftp);
+        (*env)->ReleaseStringUTFChars(env, remotePath, remote);
+        (*env)->ReleaseStringUTFChars(env, localPath, local);
+        libssh2_session_set_blocking(ctx->session, 0);
+        return -1;
+    }
+
+    char buffer[16384];
+    int rc = 0;
+    while (1) {
+        ssize_t nread = libssh2_sftp_read(h, buffer, sizeof(buffer));
+        if (nread == 0) break;
+        if (nread == LIBSSH2_ERROR_EAGAIN) continue;
+        if (nread < 0) { rc = -1; break; }
+        size_t nw = fwrite(buffer, 1, (size_t)nread, fp);
+        if (nw != (size_t)nread) { rc = -1; break; }
+    }
+
+    fclose(fp);
+    libssh2_sftp_close(h);
+    libssh2_sftp_shutdown(sftp);
+    libssh2_session_set_blocking(ctx->session, 0);
+
+    (*env)->ReleaseStringUTFChars(env, remotePath, remote);
+    (*env)->ReleaseStringUTFChars(env, localPath, local);
+    return rc;
 }
 
 /**
@@ -767,11 +1081,17 @@ Java_com_orcterm_core_ssh_SshNative_writeChannel(JNIEnv *env, jobject thiz, jlon
     
     // 使用阻塞模式写入以保证可靠性
     libssh2_session_set_blocking(ctx->session, 1);
-    ssize_t written = libssh2_channel_write(channel, (const char*)body, len);
+    ssize_t written_total = 0;
+    while (written_total < len) {
+        ssize_t written = libssh2_channel_write(channel, (const char*)body + written_total, len - written_total);
+        if (written == LIBSSH2_ERROR_EAGAIN) continue;
+        if (written <= 0) break;
+        written_total += written;
+    }
     libssh2_session_set_blocking(ctx->session, 0);
     
     (*env)->ReleaseByteArrayElements(env, data, body, 0);
-    return (int)written;
+    return (int)written_total;
 }
 
 /**
