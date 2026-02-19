@@ -53,6 +53,13 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".ui.SshTerminalActivity"
+            android:label="@string/ssh_terminal_title"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.OrcTerm"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.ThemeEditorActivity"
             android:label="@string/settings_terminal_theme_editor_title"
             android:parentActivityName=".ui.TerminalActivity"

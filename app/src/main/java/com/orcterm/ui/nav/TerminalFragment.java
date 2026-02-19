@@ -18,7 +18,7 @@ import com.orcterm.R;
 import com.orcterm.core.terminal.TerminalSession;
 import com.orcterm.core.session.SessionInfo;
 import com.orcterm.core.session.SessionManager;
-import com.orcterm.ui.TerminalActivity;
+import com.orcterm.ui.SshTerminalActivity;
 import com.orcterm.ui.adapter.SessionAdapter;
 import com.orcterm.util.AppBackgroundHelper;
 import java.util.ArrayList;
@@ -55,7 +55,7 @@ public class TerminalFragment extends Fragment implements SessionManager.Session
         recyclerView.setAdapter(adapter);
         
         adapter.setOnSessionClickListener(session -> {
-            Intent intent = new Intent(getContext(), TerminalActivity.class);
+            Intent intent = new Intent(getContext(), SshTerminalActivity.class);
             intent.putExtra("focus_container_id", session.id);
             startActivity(intent);
         });

@@ -14,6 +14,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
+import android.text.TextUtils;
 import android.util.Base64;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -39,6 +40,7 @@ import com.orcterm.core.sftp.SftpFile;
 import com.orcterm.core.sftp.SftpRepository;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.core.session.SessionConnector;
+import com.orcterm.core.session.SessionInfo;
 import com.orcterm.core.session.SessionManager;
 import com.orcterm.core.terminal.TerminalSession;
 import com.orcterm.ui.SftpTransferService;
@@ -94,11 +96,15 @@ public class SftpActivity extends AppCompatActivity {
     private SftpRepository sftpRepository;
     private long sshHandle = 0;
     private boolean isSharedSession = false;
+    private boolean preferDedicatedConnection = true;
     
     private String hostname, username, password;
     private int port;
     private int authType;
     private String keyPath;
+    private long hostId = -1L;
+    private long sftpSessionId = -1L;
+    private boolean sftpSessionConnected = false;
     private String currentPath = "/root";
     
     private SharedPreferences prefs;
@@ -354,24 +360,28 @@ public class SftpActivity extends AppCompatActivity {
             }
         });
 
+        hostId = getIntent().getLongExtra("host_id", -1L);
         hostname = getIntent().getStringExtra("hostname");
         port = getIntent().getIntExtra("port", 22);
         username = getIntent().getStringExtra("username");
         password = getIntent().getStringExtra("password");
         authType = getIntent().getIntExtra("auth_type", 0);
         keyPath = getIntent().getStringExtra("key_path");
+        long incomingSessionId = getIntent().getLongExtra("session_id", -1L);
+        sftpSessionId = resolveSftpSessionId(incomingSessionId);
 
         sshNative = new SshNative();
         sftpRepository = new SftpRepository(sshNative);
         
-        long sessionId = getIntent().getLongExtra("session_id", -1);
-        if (sessionId != -1) {
-            TerminalSession session = SessionManager.getInstance().getTerminalSession(sessionId);
-            if (session != null) {
-                long handle = session.getHandle();
-                if (handle != 0) {
-                    this.sshHandle = handle;
+        if (incomingSessionId != -1) {
+            SessionManager manager = SessionManager.getInstance();
+            TerminalSession session = manager.getTerminalSession(incomingSessionId);
+            if (session == null) {
+                long sharedHandle = manager.getAndRemoveSharedHandle(incomingSessionId);
+                if (sharedHandle != 0) {
+                    this.sshHandle = sharedHandle;
                     this.isSharedSession = true;
+                    this.preferDedicatedConnection = false;
                 }
             }
         }
@@ -883,7 +893,7 @@ public class SftpActivity extends AppCompatActivity {
 
     private void openInTerminal(SftpFile file) {
         String targetPath = file.isDir ? getFullPath(file.name) : currentPath;
-        Intent intent = new Intent(this, TerminalActivity.class);
+        Intent intent = new Intent(this, SshTerminalActivity.class);
         intent.putExtra("hostname", hostname);
         intent.putExtra("username", username);
         intent.putExtra("port", port);
@@ -1352,8 +1362,14 @@ public class SftpActivity extends AppCompatActivity {
     }
 
     private void ensureConnected() throws Exception {
-        if (sshHandle == 0) {
-            SessionConnector.Connection connection = SessionConnector.acquire(
+        if (sshHandle != 0) {
+            markSftpSessionConnected();
+            return;
+        }
+        Exception freshError = null;
+        if (preferDedicatedConnection) {
+            try {
+                SessionConnector.Connection fresh = SessionConnector.connectFresh(
                     sshNative,
                     hostname,
                     port,
@@ -1363,9 +1379,36 @@ public class SftpActivity extends AppCompatActivity {
                     keyPath,
                     getString(R.string.err_connect_fail),
                     getString(R.string.err_auth_fail)
+                );
+                sshHandle = fresh.getHandle();
+                isSharedSession = false;
+                markSftpSessionConnected();
+                return;
+            } catch (Exception e) {
+                freshError = e;
+            }
+        }
+
+        try {
+            SessionConnector.Connection reused = SessionConnector.acquire(
+                sshNative,
+                hostname,
+                port,
+                username,
+                password,
+                authType,
+                keyPath,
+                getString(R.string.err_connect_fail),
+                getString(R.string.err_auth_fail)
             );
-            sshHandle = connection.getHandle();
-            isSharedSession = connection.isShared();
+            sshHandle = reused.getHandle();
+            isSharedSession = reused.isShared();
+            markSftpSessionConnected();
+        } catch (Exception e) {
+            if (freshError != null) {
+                throw freshError;
+            }
+            throw e;
         }
     }
     
@@ -1385,13 +1428,26 @@ public class SftpActivity extends AppCompatActivity {
                 ensureConnected();
                 
                 String response = sftpRepository.fetchListResponse(sshHandle, targetPath);
-                if (!sftpRepository.isValidListResponse(response) && isSharedSession) {
+                if ((!sftpRepository.isValidListResponse(response)
+                        || ("[]".equals(response == null ? null : response.trim()) && isSharedSession))
+                        && isSharedSession) {
                     isSharedSession = false;
                     sshHandle = 0;
+                    preferDedicatedConnection = true;
                     ensureConnected();
                     response = sftpRepository.fetchListResponse(sshHandle, targetPath);
                 }
                 if (!sftpRepository.isValidListResponse(response)) {
+                    if (sshHandle != 0 && !isSharedSession) {
+                        try {
+                            sshNative.disconnect(sshHandle);
+                        } catch (Exception ignored) {
+                        }
+                    }
+                    sshHandle = 0;
+                    isSharedSession = false;
+                    preferDedicatedConnection = true;
+                    markSftpSessionDisconnected();
                     throw new Exception("SFTP list failed");
                 }
                 
@@ -1521,12 +1577,96 @@ public class SftpActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        new Thread(() -> {
-            if (sshHandle != 0 && !isSharedSession) {
-                sshNative.disconnect(sshHandle);
-                sshHandle = 0;
-            }
-        }).start();
+        if (sshHandle != 0 && sftpSessionId > 0) {
+            SessionManager.getInstance().putSharedHandle(sftpSessionId, sshHandle);
+            sshHandle = 0;
+            isSharedSession = true;
+        }
         executor.shutdownNow();
     }
+
+    private long resolveSftpSessionId(long hintedSessionId) {
+        SessionManager manager = SessionManager.getInstance();
+        if (hintedSessionId > 0 && manager.getTerminalSession(hintedSessionId) == null) {
+            return hintedSessionId;
+        }
+        long endpointId = buildEndpointSessionId(hostname, port, username);
+        if (endpointId > 0) {
+            return endpointId;
+        }
+        if (hostId > 0) {
+            return (hostId << 1) | 1L;
+        }
+        return System.currentTimeMillis();
+    }
+
+    private long buildEndpointSessionId(String host, int endpointPort, String user) {
+        if (TextUtils.isEmpty(host) || endpointPort <= 0) {
+            return -1L;
+        }
+        String normalizedHost = host.trim().toLowerCase();
+        String normalizedUser = user == null ? "" : user.trim().toLowerCase();
+        String key = normalizedHost + "|" + endpointPort + "|" + normalizedUser;
+        long hash = 1469598103934665603L;
+        for (int i = 0; i < key.length(); i++) {
+            hash ^= key.charAt(i);
+            hash *= 1099511628211L;
+        }
+        hash &= Long.MAX_VALUE;
+        if (hash == 0L) {
+            hash = 1L;
+        }
+        return hash;
+    }
+
+    private void markSftpSessionConnected() {
+        if (sftpSessionConnected) {
+            return;
+        }
+        SessionInfo info = buildSftpSessionInfo(true);
+        if (info == null) {
+            return;
+        }
+        SessionManager.getInstance().upsertSftpSession(info);
+        sftpSessionConnected = true;
+    }
+
+    private void markSftpSessionDisconnected() {
+        if (!sftpSessionConnected) {
+            return;
+        }
+        SessionInfo info = buildSftpSessionInfo(false);
+        if (info != null) {
+            SessionManager.getInstance().upsertSftpSession(info);
+        }
+        sftpSessionConnected = false;
+    }
+
+    @Nullable
+    private SessionInfo buildSftpSessionInfo(boolean connected) {
+        if (TextUtils.isEmpty(hostname) || port <= 0) {
+            return null;
+        }
+        if (sftpSessionId <= 0) {
+            sftpSessionId = resolveSftpSessionId(-1L);
+        }
+        String name;
+        if (TextUtils.isEmpty(username)) {
+            name = hostname;
+        } else {
+            name = username + "@" + hostname;
+        }
+        return new SessionInfo(
+            sftpSessionId,
+            name,
+            hostname,
+            port,
+            username,
+            password,
+            authType,
+            keyPath,
+            connected
+        );
+    }
+
 }

@@ -39,6 +39,9 @@
     <string name="settings_main_cloud_summary_bound">Bound: %1$s</string>
     <string name="settings_main_terminal_title">Terminal</string>
     <string name="settings_main_terminal_summary">Fonts, themes and behaviors</string>
+    <string name="settings_main_monitor_title">Monitor Settings</string>
+    <string name="settings_main_monitor_summary">Refresh interval, traffic display and card order</string>
+    <string name="settings_main_monitor_summary_format">%1$ds · Total %2$s · %3$s</string>
     <string name="settings_main_theme_display_title">Theme &amp; Display</string>
     <string name="settings_main_theme_display_summary">Dark mode, background and list style</string>
     <string name="settings_main_theme_display_summary_format">Theme: %1$s</string>
@@ -69,8 +72,36 @@
     <string name="session_status_connected">Connected</string>
     <string name="session_status_disconnected">Disconnected</string>
     <string name="terminal_scrollback_hint">Scrollback</string>
+    <string name="terminal_keyboard_status_shown">Keyboard shown</string>
+    <string name="terminal_keyboard_status_hidden">Keyboard hidden</string>
+    <string name="terminal_keyboard_toggle_show">Show keys</string>
+    <string name="terminal_keyboard_toggle_hide">Hide keys</string>
+    <string name="terminal_keyboard_options">Keyboard options</string>
+    <string name="terminal_soft_keyboard_toggle_show">Soft keyboard</string>
+    <string name="terminal_soft_keyboard_toggle_hide">Hide soft keyboard</string>
+    <string name="terminal_quick_keyboard_status">Quick keys: %1$s | Soft keyboard: %2$s</string>
+    <string name="terminal_soft_keyboard_status_on">On</string>
+    <string name="terminal_soft_keyboard_status_off">Off</string>
+    <string name="terminal_clipboard_empty">Clipboard is empty</string>
+    <string name="terminal_content_empty">Terminal content is empty</string>
     <string name="session_host_format">%1$s@%2$s:%3$d</string>
     <string name="session_host_no_user_format">%1$s:%2$d</string>
+    <string name="ssh_terminal_title">SSH Terminal</string>
+    <string name="ssh_terminal_connecting">Connecting...</string>
+    <string name="ssh_terminal_connected">Connected</string>
+    <string name="ssh_terminal_disconnected">Disconnected</string>
+    <string name="ssh_terminal_reconnect">Reconnect</string>
+    <string name="ssh_terminal_disconnect">Disconnect</string>
+    <string name="ssh_terminal_ctrl_c">Ctrl+C</string>
+    <string name="ssh_terminal_enter">Enter</string>
+    <string name="ssh_terminal_send">Send</string>
+    <string name="ssh_terminal_input_hint">Enter command</string>
+    <string name="ssh_terminal_missing_host">Missing host details. Please pick a host first.</string>
+    <string name="ssh_terminal_not_connected">Connection is not ready</string>
+    <string name="ssh_terminal_banner_connecting">[Connecting] %1$s@%2$s:%3$d</string>
+    <string name="ssh_terminal_banner_connected">[Connected] %1$s@%2$s:%3$d</string>
+    <string name="ssh_terminal_banner_disconnected">[Disconnected]</string>
+    <string name="ssh_terminal_banner_reusing_session">[Attached] Reusing an existing session</string>
 
     <string name="settings_theme_mode_dark">Dark</string>
     <string name="settings_theme_mode_light">Light</string>
@@ -90,6 +121,21 @@
     <string name="settings_terminal_line_height_title">Line Height</string>
     <string name="settings_terminal_letter_spacing_title">Letter Spacing</string>
     <string name="settings_terminal_cursor_style_title">Cursor Style</string>
+    <string name="settings_monitor_title">Monitor Settings</string>
+    <string name="settings_monitor_refresh_interval_title">Monitor Refresh Interval</string>
+    <string name="settings_monitor_refresh_interval_summary">Update every %1$d seconds</string>
+    <string name="settings_monitor_process_limit_title">Visible Process Count</string>
+    <string name="settings_monitor_process_limit_summary">Show up to %1$d processes</string>
+    <string name="settings_monitor_show_total_traffic_title">Show Total Traffic</string>
+    <string name="settings_monitor_show_total_traffic_on">Show realtime and cumulative traffic</string>
+    <string name="settings_monitor_show_total_traffic_off">Show realtime traffic only</string>
+    <string name="settings_monitor_traffic_scope_title">Traffic Scope</string>
+    <string name="settings_monitor_scope_session">Session cumulative</string>
+    <string name="settings_monitor_scope_boot">Since boot</string>
+    <string name="settings_monitor_card_order_title">Monitor Card Order</string>
+    <string name="settings_monitor_card_order_summary">Configure card order for load, CPU, memory, network, disk and process</string>
+    <string name="settings_enabled">Enabled</string>
+    <string name="settings_disabled">Disabled</string>
     <string name="settings_terminal_cursor_block">Block</string>
     <string name="settings_terminal_cursor_underline">Underline</string>
     <string name="settings_terminal_cursor_bar">Bar</string>
@@ -311,9 +357,32 @@
     <string name="monitor_disk_switch">Switch Disk</string>
     <string name="monitor_disk_details">Disk Details (lsblk)</string>
     <string name="monitor_net_speed">Net Speed</string>
+    <string name="monitor_net_realtime_default">Realtime ↓ 0B/s ↑ 0B/s</string>
+    <string name="monitor_net_realtime_fmt">Realtime ↓ %1$s ↑ %2$s</string>
+    <string name="monitor_net_total_default">Total ↓ 0B/s ↑ 0B/s</string>
+    <string name="monitor_net_down_default">Down: 0B/s</string>
+    <string name="monitor_net_up_default">Up: 0B/s</string>
+    <string name="monitor_net_total_fmt">Total ↓ %1$s ↑ %2$s</string>
+    <string name="monitor_net_down_fmt">Down: %1$s</string>
+    <string name="monitor_net_up_fmt">Up: %1$s</string>
+    <string name="monitor_net_traffic_total_default">Traffic: ↓ 0B ↑ 0B</string>
+    <string name="monitor_net_traffic_total_fmt">Traffic: ↓ %1$s ↑ %2$s</string>
     <string name="monitor_disk_space">Disk Space</string>
+    <string name="monitor_disk_space_fmt">Disk Space (%1$s)</string>
+    <string name="monitor_disk_total_default">Total 0.0 GB · Free 0.0 GB</string>
+    <string name="monitor_disk_mount_default">Mount: /</string>
+    <string name="monitor_disk_mount_fmt">Mount: %1$s</string>
+    <string name="monitor_disk_total_with_free_fmt">Total %1$s GB · Free %2$s GB</string>
+    <string name="monitor_disk_used_label">Used</string>
+    <string name="monitor_disk_free_label">Free</string>
     <string name="monitor_used_space">Used</string>
+    <string name="monitor_last_updated_default">Updated: --:--:--</string>
+    <string name="monitor_last_updated_fmt">Updated: %1$s</string>
+    <string name="monitor_system_load_fmt">1m %1$s  5m %2$s  15m %3$s</string>
+    <string name="monitor_mem_detail_fmt">%1$d%% · %2$s / %3$s GB</string>
     <string name="monitor_processes">Processes</string>
+    <string name="monitor_process_meta_default">Showing 0 / 0</string>
+    <string name="monitor_process_meta_fmt">Showing %1$d / %2$d</string>
     <string name="monitor_process_pid">PID</string>
     <string name="monitor_process_name">Name</string>
     <string name="monitor_process_cpu">CPU(%)</string>
@@ -533,5 +602,12 @@
         <item>System Default</item>
         <item>中文 (简体)</item>
         <item>English</item>
+    </string-array>
+
+    <string-array name="monitor_card_order_options">
+        <item>Default (Load → CPU → Memory → Network → Disk → Process)</item>
+        <item>Performance first (CPU → Memory → Load → Network → Disk → Process)</item>
+        <item>Network first (Network → Load → CPU → Memory → Disk → Process)</item>
+        <item>Process first (Process → CPU → Memory → Network → Disk → Load)</item>
     </string-array>
 </resources>

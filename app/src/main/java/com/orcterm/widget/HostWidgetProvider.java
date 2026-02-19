@@ -11,7 +11,7 @@ import android.widget.RemoteViews;
 
 import com.orcterm.R;
 import com.orcterm.ui.AddHostActivity;
-import com.orcterm.ui.TerminalActivity;
+import com.orcterm.ui.SshTerminalActivity;
 
 /**
  * 主机桌面小部件 Provider
@@ -50,7 +50,7 @@ public class HostWidgetProvider extends AppWidgetProvider {
         views.setOnClickPendingIntent(R.id.widget_btn_add, addPendingIntent);
 
         // Set up item click template
-        Intent clickIntent = new Intent(context, TerminalActivity.class);
+        Intent clickIntent = new Intent(context, SshTerminalActivity.class);
         PendingIntent clickPendingIntent = PendingIntent.getActivity(context, 0, clickIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
         views.setPendingIntentTemplate(R.id.widget_list, clickPendingIntent);
 

@@ -136,6 +136,14 @@
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:textColor="?attr/colorOnSurfaceVariant"/>
+                <TextView
+                    android:id="@+id/tv_monitor_updated"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/monitor_last_updated_default"
+                    android:textSize="11sp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginEnd="4dp" />
                 <ImageButton
                     android:id="@+id/btn_refresh"
                     android:layout_width="36dp"
@@ -146,245 +154,209 @@
                     app:tint="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
 
-            <androidx.constraintlayout.widget.ConstraintLayout
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_system_load"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp">
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="?attr/colorOutline"
+                app:cardBackgroundColor="?attr/colorSurface">
 
-                <androidx.constraintlayout.widget.ConstraintLayout
-                    android:id="@+id/layout_load_module"
-                    android:layout_width="0dp"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="12dp"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintEnd_toStartOf="@id/card_memory"
-                    app:layout_constraintTop_toTopOf="parent"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintHorizontal_weight="0.9">
-
-                    <com.google.android.material.card.MaterialCardView
-                        android:id="@+id/card_system_load"
-                        android:layout_width="0dp"
-                        android:layout_height="0dp"
-                        app:cardCornerRadius="16dp"
-                        app:cardElevation="0dp"
-                        app:strokeWidth="1dp"
-                        app:strokeColor="?attr/colorOutline"
-                        app:cardBackgroundColor="?attr/colorSurface"
-                        app:layout_constraintStart_toStartOf="parent"
-                        app:layout_constraintEnd_toEndOf="parent"
-                        app:layout_constraintTop_toTopOf="parent"
-                        app:layout_constraintDimensionRatio="1:1">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:orientation="vertical"
-                            android:padding="16dp">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal"
-                                android:gravity="center_vertical"
-                                android:layout_marginBottom="4dp">
-                                <ImageView
-                                    android:layout_width="16dp"
-                                    android:layout_height="16dp"
-                                    android:src="@drawable/ic_action_settings"
-                                    app:tint="?attr/colorOnSurfaceVariant"/>
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/monitor_system_load"
-                                    android:textSize="12sp"
-                                    android:textStyle="bold"
-                                    android:textColor="?attr/colorOnSurfaceVariant"
-                                    android:layout_marginStart="8dp"/>
-                            </LinearLayout>
-
-                            <TextView
-                                android:id="@+id/tv_system_load"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:text="0.00 0.00 0.00"
-                                android:textSize="14sp"
-                                android:textStyle="bold"
-                                android:textColor="?attr/colorOnSurface"/>
-                        </LinearLayout>
-                    </com.google.android.material.card.MaterialCardView>
-
-                    <com.google.android.material.card.MaterialCardView
-                        android:id="@+id/card_cpu_load"
-                        android:layout_width="0dp"
-                        android:layout_height="0dp"
-                        android:layout_marginTop="12dp"
-                        app:cardCornerRadius="16dp"
-                        app:cardElevation="0dp"
-                        app:strokeWidth="1dp"
-                        app:strokeColor="?attr/colorOutline"
-                        app:cardBackgroundColor="?attr/colorSurface"
-                        app:layout_constraintStart_toStartOf="parent"
-                        app:layout_constraintEnd_toEndOf="parent"
-                        app:layout_constraintTop_toBottomOf="@id/card_system_load"
-                        app:layout_constraintBottom_toBottomOf="parent"
-                        app:layout_constraintDimensionRatio="1:1">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:orientation="vertical"
-                            android:padding="16dp">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="@string/monitor_cpu_load"
-                                android:textSize="12sp"
-                                android:textStyle="bold"
-                                android:textColor="?attr/colorOnSurfaceVariant"
-                                android:layout_marginBottom="4dp"/>
-
-                            <LinearLayout
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal"
-                                android:baselineAligned="true">
-                                <TextView
-                                    android:id="@+id/tv_cpu_percent"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="0"
-                                    android:textSize="18sp"
-                                    android:textStyle="bold"
-                                    android:textColor="?attr/colorOnSurface"/>
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="%"
-                                    android:textSize="12sp"
-                                    android:textColor="?attr/colorOnSurfaceVariant"
-                                    android:layout_marginStart="2dp"/>
-                            </LinearLayout>
-
-                            <ProgressBar
-                                android:id="@+id/progress_cpu"
-                                style="?android:attr/progressBarStyleHorizontal"
-                                android:layout_width="match_parent"
-                                android:layout_height="4dp"
-                                android:layout_marginTop="8dp"
-                                android:progressDrawable="@drawable/progress_rounded"
-                                android:progressTint="?attr/colorTertiary"
-                                android:max="100"
-                                android:progress="0"/>
-                        </LinearLayout>
-                    </com.google.android.material.card.MaterialCardView>
-                </androidx.constraintlayout.widget.ConstraintLayout>
-
-                <com.google.android.material.card.MaterialCardView
-                    android:id="@+id/card_memory"
-                    android:layout_width="0dp"
-                    android:layout_height="0dp"
-                    app:cardCornerRadius="16dp"
-                    app:cardElevation="0dp"
-                    app:strokeWidth="1dp"
-                    app:strokeColor="?attr/colorOutline"
-                    app:cardBackgroundColor="?attr/colorSurface"
-                    app:layout_constraintStart_toEndOf="@id/layout_load_module"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintTop_toTopOf="parent"
-                    app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintHorizontal_weight="1.1">
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
-                        android:padding="16dp">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="4dp">
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/ic_action_settings"
+                            app:tint="?attr/colorOnSurfaceVariant"/>
+                        <TextView
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <LinearLayout
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal"
-                                android:gravity="center_vertical"
-                                android:layout_marginBottom="8dp">
-                                <ImageView
-                                    android:layout_width="16dp"
-                                    android:layout_height="16dp"
-                                    android:src="@drawable/ic_action_memory"
-                                    app:tint="?attr/colorOnSurfaceVariant"/>
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="@string/monitor_memory"
-                                    android:textSize="12sp"
-                                    android:textStyle="bold"
-                                    android:textColor="?attr/colorOnSurfaceVariant"
-                                    android:layout_marginStart="8dp"/>
-                            </LinearLayout>
-
-                            <LinearLayout
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:orientation="horizontal"
-                                android:baselineAligned="true">
-                                <TextView
-                                    android:id="@+id/tv_mem_usage"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="4.2"
-                                    android:textSize="32sp"
-                                    android:textStyle="bold"
-                                    android:textColor="?attr/colorOnSurface"/>
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="GB"
-                                    android:textSize="16sp"
-                                    android:textColor="?attr/colorOnSurfaceVariant"
-                                    android:layout_marginStart="2dp"/>
-                            </LinearLayout>
-                        </LinearLayout>
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical"
-                            android:layout_marginStart="12dp">
-
-                            <ProgressBar
-                                android:id="@+id/progress_mem"
-                                style="?android:attr/progressBarStyleHorizontal"
-                                android:layout_width="match_parent"
-                                android:layout_height="6dp"
-                                android:layout_marginTop="4dp"
-                                android:progressDrawable="@drawable/progress_rounded"
-                                android:progressTint="@color/status_warning"
-                                android:max="100"
-                                android:progress="65"/>
-
-                            <TextView
-                                android:id="@+id/tv_mem_detail_small"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
-                                android:text="65% of 8GB"
-                                android:textSize="10sp"
-                                android:textColor="?attr/colorOnSurfaceVariant"
-                                android:layout_gravity="end"/>
-                        </LinearLayout>
+                            android:text="@string/monitor_system_load"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:layout_marginStart="8dp"/>
                     </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-            </androidx.constraintlayout.widget.ConstraintLayout>
+
+                    <TextView
+                        android:id="@+id/tv_system_load"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="1m 0.00  5m 0.00  15m 0.00"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurface"/>
+
+                    <com.github.mikephil.charting.charts.LineChart
+                        android:id="@+id/chart_load"
+                        android:layout_width="match_parent"
+                        android:layout_height="72dp"
+                        android:layout_marginTop="8dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_cpu_load"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="?attr/colorOutline"
+                app:cardBackgroundColor="?attr/colorSurface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/monitor_cpu_load"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginBottom="4dp"/>
+
+                    <FrameLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="4dp">
+
+                        <com.google.android.material.progressindicator.CircularProgressIndicator
+                            android:id="@+id/progress_cpu"
+                            android:layout_width="84dp"
+                            android:layout_height="84dp"
+                            android:max="100"
+                            android:progress="0"
+                            app:indicatorSize="84dp"
+                            app:indicatorInset="0dp"
+                            app:trackThickness="8dp"
+                            app:trackColor="?attr/colorSurfaceVariant" />
+
+                        <TextView
+                            android:id="@+id/tv_cpu_percent"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="0%"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:textColor="?attr/colorOnSurface" />
+                    </FrameLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_memory"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="?attr/colorOutline"
+                app:cardBackgroundColor="?attr/colorSurface">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            android:src="@drawable/ic_action_memory"
+                            app:tint="?attr/colorOnSurfaceVariant"/>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/monitor_memory"
+                            android:textSize="12sp"
+                            android:textStyle="bold"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:layout_marginStart="8dp"/>
+                    </LinearLayout>
+
+                    <FrameLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="4dp">
+
+                        <com.google.android.material.progressindicator.CircularProgressIndicator
+                            android:id="@+id/progress_mem"
+                            android:layout_width="96dp"
+                            android:layout_height="96dp"
+                            android:max="100"
+                            android:progress="0"
+                            app:indicatorSize="96dp"
+                            app:indicatorInset="0dp"
+                            app:trackThickness="9dp"
+                            app:indicatorColor="@color/status_warning"
+                            app:trackColor="?attr/colorSurfaceVariant" />
+
+                        <TextView
+                            android:id="@+id/tv_mem_percent"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="0%"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:textColor="?attr/colorOnSurface" />
+                    </FrameLayout>
+
+                    <TextView
+                        android:id="@+id/tv_mem_usage"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="8dp"
+                        android:text="0.0 GB"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurface"/>
+
+                    <TextView
+                        android:id="@+id/tv_mem_detail_small"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:layout_gravity="center_horizontal"
+                        android:text="0% · 0.0 / 0.0 GB"
+                        android:textSize="10sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"/>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_network"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:cardCornerRadius="16dp"
@@ -420,14 +392,43 @@
                             android:textStyle="bold"
                             android:textColor="?attr/colorOnSurfaceVariant"
                             android:layout_marginStart="8dp"/>
-                        <TextView
-                            android:id="@+id/tv_net_speed"
+                        <LinearLayout
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="↓ 2.4MB/s ↑ 1.1MB/s"
-                            android:textSize="12sp"
-                            android:textStyle="bold"
-                            android:textColor="?attr/colorPrimary"/>
+                            android:orientation="vertical"
+                            android:gravity="end">
+                            <TextView
+                                android:id="@+id/tv_net_speed"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/monitor_net_realtime_default"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                android:textColor="?attr/colorPrimary"/>
+                            <TextView
+                                android:id="@+id/tv_net_down"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/monitor_net_down_default"
+                                android:textSize="11sp"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:layout_marginTop="2dp"/>
+                            <TextView
+                                android:id="@+id/tv_net_up"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/monitor_net_up_default"
+                                android:textSize="11sp"
+                                android:textColor="?attr/colorOnSurfaceVariant"/>
+                            <TextView
+                                android:id="@+id/tv_net_total_traffic"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/monitor_net_traffic_total_default"
+                                android:textSize="11sp"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:layout_marginTop="2dp"/>
+                        </LinearLayout>
                     </LinearLayout>
 
                     <com.github.mikephil.charting.charts.LineChart
@@ -438,6 +439,7 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_disk"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:cardCornerRadius="16dp"
@@ -524,10 +526,19 @@
                                 android:id="@+id/tv_disk_total"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Total Capacity 512GB"
+                                android:text="@string/monitor_disk_total_default"
                                 android:textSize="12sp"
                                 android:textColor="?attr/colorOnSurfaceVariant"
                                 android:layout_marginTop="4dp"/>
+
+                            <TextView
+                                android:id="@+id/tv_disk_mount"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/monitor_disk_mount_default"
+                                android:textSize="11sp"
+                                android:textColor="?attr/colorOnSurfaceVariant"
+                                android:layout_marginTop="2dp"/>
                         </LinearLayout>
 
                         <FrameLayout
@@ -567,6 +578,7 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_process"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:cardCornerRadius="16dp"
@@ -596,6 +608,13 @@
                             android:textSize="14sp"
                             android:textStyle="bold"
                             android:textColor="?attr/colorOnSurfaceVariant"/>
+                        <TextView
+                            android:id="@+id/tv_process_meta"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/monitor_process_meta_default"
+                            android:textSize="11sp"
+                            android:textColor="?attr/colorOnSurfaceVariant"/>
                     </LinearLayout>
 
                     <HorizontalScrollView
@@ -615,7 +634,7 @@
                                 android:paddingTop="4dp"
                                 android:paddingBottom="4dp">
                                 <TextView
-                                    android:layout_width="72dp"
+                                    android:layout_width="60dp"
                                     android:layout_height="wrap_content"
                                     android:text="@string/monitor_process_pid"
                                     android:textSize="12sp"
@@ -625,7 +644,7 @@
                                     android:ellipsize="end"
                                     android:includeFontPadding="false"/>
                                 <TextView
-                                    android:layout_width="200dp"
+                                    android:layout_width="150dp"
                                     android:layout_height="wrap_content"
                                     android:text="@string/monitor_process_name"
                                     android:textSize="12sp"
@@ -636,7 +655,7 @@
                                     android:includeFontPadding="false"/>
                                 <TextView
                                     android:id="@+id/tv_sort_cpu"
-                                    android:layout_width="90dp"
+                                    android:layout_width="70dp"
                                     android:layout_height="wrap_content"
                                     android:text="@string/monitor_process_cpu"
                                     android:textSize="12sp"
@@ -648,7 +667,7 @@
                                     android:includeFontPadding="false"/>
                                 <TextView
                                     android:id="@+id/tv_sort_mem"
-                                    android:layout_width="90dp"
+                                    android:layout_width="70dp"
                                     android:layout_height="wrap_content"
                                     android:text="@string/monitor_process_mem"
                                     android:textSize="12sp"
@@ -660,7 +679,7 @@
                                     android:includeFontPadding="false"/>
                                 <TextView
                                     android:id="@+id/tv_sort_conn"
-                                    android:layout_width="80dp"
+                                    android:layout_width="60dp"
                                     android:layout_height="wrap_content"
                                     android:text="@string/monitor_process_conn"
                                     android:textSize="12sp"
@@ -671,7 +690,7 @@
                                     android:ellipsize="end"
                                     android:includeFontPadding="false"/>
                                 <TextView
-                                    android:layout_width="90dp"
+                                    android:layout_width="70dp"
                                     android:layout_height="wrap_content"
                                     android:text="@string/monitor_process_status"
                                     android:textSize="12sp"
@@ -681,7 +700,7 @@
                                     android:ellipsize="end"
                                     android:includeFontPadding="false"/>
                                 <TextView
-                                    android:layout_width="180dp"
+                                    android:layout_width="120dp"
                                     android:layout_height="wrap_content"
                                     android:text="@string/monitor_process_uptime"
                                     android:textSize="12sp"

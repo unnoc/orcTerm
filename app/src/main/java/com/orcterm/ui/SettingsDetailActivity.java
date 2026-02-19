@@ -65,15 +65,19 @@ import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
 public class SettingsDetailActivity extends AppCompatActivity {
+    private static final String DEFAULT_MONITOR_CARD_ORDER = "load,cpu,memory,network,disk,process";
+    private static final String[] MONITOR_CARD_KEYS = {"load", "cpu", "memory", "network", "disk", "process"};
 
     private SharedPreferences prefs;
     private LinearLayout contentContainer;
@@ -186,6 +190,11 @@ public class SettingsDetailActivity extends AppCompatActivity {
         keys.add("terminal_paste_on_tap");
         keys.add("terminal_bell_audio");
         keys.add("terminal_bell_visual");
+        keys.add("monitor_refresh_interval_sec");
+        keys.add("monitor_process_limit");
+        keys.add("monitor_show_total_traffic");
+        keys.add("monitor_traffic_scope");
+        keys.add("monitor_card_order");
         keys.add("file_download_path");
         keys.add("file_sort_order");
         keys.add("file_show_hidden");
@@ -220,6 +229,8 @@ public class SettingsDetailActivity extends AppCompatActivity {
         if ("ssh_connect_timeout_sec".equals(key)) return prefs.getInt(key, 10);
         if ("ssh_read_timeout_sec".equals(key)) return prefs.getInt(key, 60);
         if ("ssh_keepalive_interval_sec".equals(key)) return prefs.getInt(key, 0);
+        if ("monitor_refresh_interval_sec".equals(key)) return prefs.getInt(key, 3);
+        if ("monitor_process_limit".equals(key)) return prefs.getInt(key, 80);
         if ("terminal_enter_newline".equals(key)) return prefs.getBoolean(key, true);
         if ("terminal_local_echo".equals(key)) return prefs.getBoolean(key, false);
         if ("terminal_auto_scroll_output".equals(key)) return prefs.getBoolean(key, true);
@@ -230,6 +241,7 @@ public class SettingsDetailActivity extends AppCompatActivity {
         if ("terminal_bell_visual".equals(key)) return prefs.getBoolean(key, true);
         if ("file_show_hidden".equals(key)) return prefs.getBoolean(key, false);
         if ("ssh_keepalive_reply".equals(key)) return prefs.getBoolean(key, true);
+        if ("monitor_show_total_traffic".equals(key)) return prefs.getBoolean(key, true);
         if ("persistent_notification_enabled".equals(key)) return prefs.getBoolean(key, false);
         if ("home_host_auto_connect_enabled".equals(key)) return prefs.getBoolean(key, false);
         if ("home_host_list_auto_fetch_enabled".equals(key)) return prefs.getBoolean(key, false);
@@ -238,6 +250,8 @@ public class SettingsDetailActivity extends AppCompatActivity {
         if ("file_unzip_path".equals(key)) return prefs.getString(key, "");
         if ("sftp_default_path".equals(key)) return prefs.getString(key, "");
         if ("app_language".equals(key)) return prefs.getString(key, "system");
+        if ("monitor_traffic_scope".equals(key)) return prefs.getString(key, "session");
+        if ("monitor_card_order".equals(key)) return prefs.getString(key, "load,cpu,memory,network,disk,process");
         if ("terminal_keypad_mapping".equals(key)) return prefs.getString(key, "");
         if ("terminal_scrollback_lines".equals(key)) return prefs.getInt(key, 2000);
         return prefs.getString(key, "");
@@ -278,6 +292,11 @@ public class SettingsDetailActivity extends AppCompatActivity {
         if ("terminal_paste_on_tap".equals(key)) return getString(R.string.settings_terminal_behavior_paste_title);
         if ("terminal_bell_audio".equals(key)) return getString(R.string.settings_terminal_behavior_bell_audio_title);
         if ("terminal_bell_visual".equals(key)) return getString(R.string.settings_terminal_behavior_bell_visual_title);
+        if ("monitor_refresh_interval_sec".equals(key)) return getString(R.string.settings_monitor_refresh_interval_title);
+        if ("monitor_process_limit".equals(key)) return getString(R.string.settings_monitor_process_limit_title);
+        if ("monitor_show_total_traffic".equals(key)) return getString(R.string.settings_monitor_show_total_traffic_title);
+        if ("monitor_traffic_scope".equals(key)) return getString(R.string.settings_monitor_traffic_scope_title);
+        if ("monitor_card_order".equals(key)) return getString(R.string.settings_monitor_card_order_title);
         if ("file_download_path".equals(key)) return getString(R.string.settings_file_download_path_title);
         if ("file_sort_order".equals(key)) return getString(R.string.settings_file_sort_order_title);
         if ("file_show_hidden".equals(key)) return getString(R.string.settings_file_show_hidden_title);
@@ -484,6 +503,9 @@ public class SettingsDetailActivity extends AppCompatActivity {
         } else if ("terminal".equals(page)) {
             setTitle(getString(R.string.settings_terminal_title));
             buildTerminalPage();
+        } else if ("monitor".equals(page)) {
+            setTitle(getString(R.string.settings_monitor_title));
+            buildMonitorPage();
         } else if ("theme_display".equals(page)) {
             setTitle(getString(R.string.settings_theme_display_title));
             buildThemeDisplayPage();
@@ -705,6 +727,200 @@ public class SettingsDetailActivity extends AppCompatActivity {
         addDivider();
         addHeader(getString(R.string.settings_preview_header));
         contentContainer.addView(createTerminalPreview());
+    }
+
+    private void buildMonitorPage() {
+        View refreshItem = addItem(
+                R.drawable.ic_action_refresh,
+                getString(R.string.settings_monitor_refresh_interval_title),
+                "",
+                "monitor_refresh_interval",
+                v -> showMonitorRefreshIntervalDialog());
+        updateMonitorRefreshIntervalSummary(refreshItem);
+
+        View processLimitItem = addItem(
+                R.drawable.ic_action_view_list,
+                getString(R.string.settings_monitor_process_limit_title),
+                "",
+                "monitor_process_limit",
+                v -> showMonitorProcessLimitDialog());
+        updateMonitorProcessLimitSummary(processLimitItem);
+
+        View totalTrafficItem = addItem(
+                R.drawable.ic_dashboard_network,
+                getString(R.string.settings_monitor_show_total_traffic_title),
+                "",
+                "monitor_show_total_traffic",
+                null);
+        Switch totalTrafficSwitch = totalTrafficItem.findViewById(R.id.switch_widget);
+        totalTrafficSwitch.setVisibility(View.VISIBLE);
+        totalTrafficItem.findViewById(R.id.chevron).setVisibility(View.GONE);
+        totalTrafficSwitch.setChecked(prefs.getBoolean("monitor_show_total_traffic", true));
+        updateMonitorShowTotalTrafficSummary(totalTrafficItem);
+        totalTrafficSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefs.edit().putBoolean("monitor_show_total_traffic", isChecked).apply();
+            updateMonitorShowTotalTrafficSummary(totalTrafficItem);
+        });
+        totalTrafficItem.setOnClickListener(v -> totalTrafficSwitch.toggle());
+
+        View scopeItem = addItem(
+                R.drawable.ic_dashboard_network,
+                getString(R.string.settings_monitor_traffic_scope_title),
+                "",
+                "monitor_traffic_scope",
+                v -> showMonitorTrafficScopeDialog());
+        updateMonitorTrafficScopeSummary(scopeItem);
+
+        View orderItem = addItem(
+                R.drawable.ic_action_sort,
+                getString(R.string.settings_monitor_card_order_title),
+                "",
+                "monitor_card_order",
+                v -> showMonitorCardOrderDialog());
+        updateMonitorCardOrderSummary(orderItem);
+    }
+
+    private void updateMonitorRefreshIntervalSummary(View item) {
+        TextView summary = item.findViewById(R.id.summary);
+        int sec = prefs.getInt("monitor_refresh_interval_sec", 3);
+        summary.setText(getString(R.string.settings_monitor_refresh_interval_summary, sec));
+        summary.setVisibility(View.VISIBLE);
+    }
+
+    private void updateMonitorProcessLimitSummary(View item) {
+        TextView summary = item.findViewById(R.id.summary);
+        int limit = prefs.getInt("monitor_process_limit", 80);
+        summary.setText(getString(R.string.settings_monitor_process_limit_summary, limit));
+        summary.setVisibility(View.VISIBLE);
+    }
+
+    private void updateMonitorShowTotalTrafficSummary(View item) {
+        TextView summary = item.findViewById(R.id.summary);
+        boolean show = prefs.getBoolean("monitor_show_total_traffic", true);
+        summary.setText(getString(show
+                ? R.string.settings_monitor_show_total_traffic_on
+                : R.string.settings_monitor_show_total_traffic_off));
+        summary.setVisibility(View.VISIBLE);
+    }
+
+    private void updateMonitorTrafficScopeSummary(View item) {
+        TextView summary = item.findViewById(R.id.summary);
+        String scope = prefs.getString("monitor_traffic_scope", "session");
+        String label = "boot".equals(scope)
+                ? getString(R.string.settings_monitor_scope_boot)
+                : getString(R.string.settings_monitor_scope_session);
+        summary.setText(label);
+        summary.setVisibility(View.VISIBLE);
+    }
+
+    private void updateMonitorCardOrderSummary(View item) {
+        TextView summary = item.findViewById(R.id.summary);
+        String order = sanitizeMonitorCardOrder(prefs.getString("monitor_card_order", DEFAULT_MONITOR_CARD_ORDER));
+        String[] keys = order.split(",");
+        ArrayList<String> labels = new ArrayList<>();
+        for (String key : keys) {
+            labels.add(resolveMonitorCardLabel(key));
+        }
+        summary.setText(TextUtils.join(" > ", labels));
+        summary.setVisibility(View.VISIBLE);
+    }
+
+    private void showMonitorRefreshIntervalDialog() {
+        showSshNumberDialog(
+                getString(R.string.settings_monitor_refresh_interval_title),
+                "monitor_refresh_interval_sec",
+                3,
+                1,
+                60);
+    }
+
+    private void showMonitorProcessLimitDialog() {
+        showSshNumberDialog(
+                getString(R.string.settings_monitor_process_limit_title),
+                "monitor_process_limit",
+                80,
+                10,
+                500);
+    }
+
+    private void showMonitorTrafficScopeDialog() {
+        String[] options = {
+                getString(R.string.settings_monitor_scope_session),
+                getString(R.string.settings_monitor_scope_boot)
+        };
+        String current = prefs.getString("monitor_traffic_scope", "session");
+        int checked = "boot".equals(current) ? 1 : 0;
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.settings_monitor_traffic_scope_title))
+                .setSingleChoiceItems(options, checked, (dialog, which) -> {
+                    prefs.edit().putString("monitor_traffic_scope", which == 1 ? "boot" : "session").apply();
+                    dialog.dismiss();
+                    recreate();
+                })
+                .setNegativeButton(getString(R.string.action_cancel), null)
+                .show();
+    }
+
+    private void showMonitorCardOrderDialog() {
+        String[] options = getResources().getStringArray(R.array.monitor_card_order_options);
+        String current = sanitizeMonitorCardOrder(prefs.getString("monitor_card_order", DEFAULT_MONITOR_CARD_ORDER));
+        int checked = resolveMonitorCardOrderIndex(current);
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.settings_monitor_card_order_title))
+                .setSingleChoiceItems(options, checked, (dialog, which) -> {
+                    prefs.edit().putString("monitor_card_order", resolveMonitorCardOrderValue(which)).apply();
+                    dialog.dismiss();
+                    recreate();
+                })
+                .setNegativeButton(getString(R.string.action_cancel), null)
+                .show();
+    }
+
+    private int resolveMonitorCardOrderIndex(String order) {
+        String target = sanitizeMonitorCardOrder(order);
+        for (int i = 0; i < 4; i++) {
+            if (target.equals(resolveMonitorCardOrderValue(i))) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private String resolveMonitorCardOrderValue(int index) {
+        if (index == 1) return "cpu,memory,load,network,disk,process";
+        if (index == 2) return "network,load,cpu,memory,disk,process";
+        if (index == 3) return "process,cpu,memory,network,disk,load";
+        return DEFAULT_MONITOR_CARD_ORDER;
+    }
+
+    private String sanitizeMonitorCardOrder(String raw) {
+        Set<String> keys = new LinkedHashSet<>();
+        if (raw != null && !raw.trim().isEmpty()) {
+            String[] parts = raw.split(",");
+            for (String part : parts) {
+                String key = part == null ? "" : part.trim().toLowerCase(Locale.US);
+                for (String allow : MONITOR_CARD_KEYS) {
+                    if (allow.equals(key)) {
+                        keys.add(key);
+                        break;
+                    }
+                }
+            }
+        }
+        for (String key : MONITOR_CARD_KEYS) {
+            keys.add(key);
+        }
+        return TextUtils.join(",", keys);
+    }
+
+    private String resolveMonitorCardLabel(String key) {
+        if ("load".equals(key)) return getString(R.string.monitor_system_load);
+        if ("cpu".equals(key)) return getString(R.string.monitor_cpu_load);
+        if ("memory".equals(key)) return getString(R.string.monitor_memory);
+        if ("network".equals(key)) return getString(R.string.monitor_network);
+        if ("disk".equals(key)) return getString(R.string.monitor_disk);
+        if ("process".equals(key)) return getString(R.string.monitor_process);
+        return key;
     }
 
     private void showKeyboardHeightDialog() {
@@ -1026,6 +1242,12 @@ public class SettingsDetailActivity extends AppCompatActivity {
         list.add(new SettingEntry("terminal_keyboard_layout", getString(R.string.settings_terminal_keyboard_layout_title), getString(R.string.settings_terminal_keyboard_layout_summary), "terminal", "terminal_keyboard_layout", R.drawable.ic_action_grid));
         list.add(new SettingEntry("terminal_scrollback", getString(R.string.settings_terminal_scrollback_title), getString(R.string.settings_terminal_scrollback_summary, prefs.getInt("terminal_scrollback_lines", 2000)), "terminal", "terminal_scrollback", R.drawable.ic_action_view_list));
         list.add(new SettingEntry("terminal_behavior", getString(R.string.settings_terminal_behavior_title), getString(R.string.settings_terminal_behavior_summary), "terminal", "terminal_behavior", R.drawable.ic_action_settings));
+        list.add(new SettingEntry("monitor_refresh_interval", getString(R.string.settings_monitor_refresh_interval_title), getString(R.string.settings_monitor_refresh_interval_summary, prefs.getInt("monitor_refresh_interval_sec", 3)), "monitor", "monitor_refresh_interval", R.drawable.ic_action_refresh));
+        list.add(new SettingEntry("monitor_process_limit", getString(R.string.settings_monitor_process_limit_title), getString(R.string.settings_monitor_process_limit_summary, prefs.getInt("monitor_process_limit", 80)), "monitor", "monitor_process_limit", R.drawable.ic_action_view_list));
+        list.add(new SettingEntry("monitor_show_total_traffic", getString(R.string.settings_monitor_show_total_traffic_title), prefs.getBoolean("monitor_show_total_traffic", true) ? getString(R.string.settings_monitor_show_total_traffic_on) : getString(R.string.settings_monitor_show_total_traffic_off), "monitor", "monitor_show_total_traffic", R.drawable.ic_dashboard_network));
+        String scope = prefs.getString("monitor_traffic_scope", "session");
+        list.add(new SettingEntry("monitor_traffic_scope", getString(R.string.settings_monitor_traffic_scope_title), "boot".equals(scope) ? getString(R.string.settings_monitor_scope_boot) : getString(R.string.settings_monitor_scope_session), "monitor", "monitor_traffic_scope", R.drawable.ic_dashboard_network));
+        list.add(new SettingEntry("monitor_card_order", getString(R.string.settings_monitor_card_order_title), getString(R.string.settings_monitor_card_order_summary), "monitor", "monitor_card_order", R.drawable.ic_action_sort));
         list.add(new SettingEntry("theme_mode", getString(R.string.settings_theme_mode_title), getString(R.string.settings_theme_mode_summary), "theme_display", "theme_mode", R.drawable.ic_action_appearance));
         list.add(new SettingEntry("theme_background", getString(R.string.settings_theme_bg_title), getString(R.string.settings_theme_bg_summary), "theme_display", "theme_background", R.drawable.ic_action_image));
         list.add(new SettingEntry("theme_density", getString(R.string.settings_theme_density_title), getString(R.string.settings_theme_density_summary), "theme_display", "theme_density", R.drawable.ic_action_grid));
@@ -1289,7 +1511,7 @@ public class SettingsDetailActivity extends AppCompatActivity {
     }
 
     private void openHostQuickAction(HostEntity host, boolean openSftp) {
-        Intent intent = new Intent(this, openSftp ? SftpActivity.class : TerminalActivity.class);
+        Intent intent = new Intent(this, openSftp ? SftpActivity.class : SshTerminalActivity.class);
         intent.putExtra("host_id", host.id);
         intent.putExtra("hostname", host.hostname);
         intent.putExtra("username", host.username);

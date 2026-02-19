@@ -10,7 +10,7 @@ import android.os.Build;
 import androidx.core.app.NotificationCompat;
 
 import com.orcterm.R;
-import com.orcterm.ui.TerminalActivity;
+import com.orcterm.ui.SshTerminalActivity;
 
 /**
  * 常驻通知管理
@@ -31,7 +31,7 @@ public class PersistentNotificationHelper {
         if (nm == null) return;
 
         if (enabled && active && info != null && !info.isEmpty()) {
-            Intent intent = new Intent(ctx, TerminalActivity.class);
+            Intent intent = new Intent(ctx, SshTerminalActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             PendingIntent pi = PendingIntent.getActivity(
                     ctx, 0, intent,

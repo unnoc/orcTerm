@@ -10,6 +10,7 @@ import com.orcterm.core.terminal.TerminalSession;
 public class SessionManager {
     private static SessionManager instance;
     private final List<SessionInfo> sessions = new CopyOnWriteArrayList<>();
+    private final List<SessionInfo> sftpSessions = new CopyOnWriteArrayList<>();
     private final Map<Long, TerminalSession> sessionMap = new ConcurrentHashMap<>();
     private final Map<Long, Long> sharedHandleMap = new ConcurrentHashMap<>();
     private final List<SessionListener> listeners = new CopyOnWriteArrayList<>();
@@ -63,6 +64,65 @@ public class SessionManager {
             sessionMap.put(info.id, session);
         }
         notifyListeners();
+    }
+
+    public synchronized void upsertSftpSession(SessionInfo info) {
+        int index = -1;
+        for (int i = 0; i < sftpSessions.size(); i++) {
+            SessionInfo existing = sftpSessions.get(i);
+            if (sameEndpoint(existing, info)) {
+                index = i;
+                break;
+            }
+        }
+        if (index >= 0) {
+            SessionInfo existing = sftpSessions.get(index);
+            existing.id = info.id;
+            existing.name = info.name;
+            existing.hostname = info.hostname;
+            existing.port = info.port;
+            existing.username = info.username;
+            existing.password = info.password;
+            existing.authType = info.authType;
+            existing.keyPath = info.keyPath;
+            existing.connected = info.connected;
+            existing.timestamp = info.timestamp;
+        } else {
+            sftpSessions.add(info);
+        }
+        notifyListeners();
+    }
+
+    public synchronized void updateSftpSession(String host, int port, String username, boolean connected) {
+        for (SessionInfo session : sftpSessions) {
+            if (session == null) continue;
+            if (port != session.port) continue;
+            if (!safeEquals(host, session.hostname)) continue;
+            if (!safeEquals(username, session.username)) continue;
+            session.connected = connected;
+            session.timestamp = System.currentTimeMillis();
+            notifyListeners();
+            return;
+        }
+    }
+
+    public synchronized void removeSftpSession(long id) {
+        boolean removed = sftpSessions.removeIf(s -> s != null && s.id == id);
+        if (removed) {
+            notifyListeners();
+        }
+    }
+
+    public synchronized void removeSftpSession(String host, int port, String username) {
+        boolean removed = sftpSessions.removeIf(s ->
+            s != null
+                && s.port == port
+                && safeEquals(host, s.hostname)
+                && safeEquals(username, s.username)
+        );
+        if (removed) {
+            notifyListeners();
+        }
     }
 
     public void updateSession(long id, boolean connected) {
@@ -135,11 +195,16 @@ public class SessionManager {
     public void clearSessions() {
         sessionMap.clear(); // Should we disconnect all?
         sessions.clear();
+        sftpSessions.clear();
         notifyListeners();
     }
 
     public List<SessionInfo> getSessions() {
         return new ArrayList<>(sessions);
+    }
+
+    public List<SessionInfo> getSftpSessions() {
+        return new ArrayList<>(sftpSessions);
     }
 
     public void addListener(SessionListener listener) {
@@ -154,5 +219,16 @@ public class SessionManager {
         for (SessionListener listener : listeners) {
             listener.onSessionsChanged();
         }
+    }
+
+    private boolean sameEndpoint(SessionInfo a, SessionInfo b) {
+        if (a == null || b == null) return false;
+        return a.port == b.port
+            && safeEquals(a.hostname, b.hostname)
+            && safeEquals(a.username, b.username);
+    }
+
+    private boolean safeEquals(String a, String b) {
+        return a == null ? b == null : a.equals(b);
     }
 }

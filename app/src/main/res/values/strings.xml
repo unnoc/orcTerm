@@ -50,6 +50,9 @@
     <string name="settings_main_cloud_summary_bound">已绑定: %1$s</string>
     <string name="settings_main_terminal_title">终端设置</string>
     <string name="settings_main_terminal_summary">字体、主题与键盘行为</string>
+    <string name="settings_main_monitor_title">监控设置</string>
+    <string name="settings_main_monitor_summary">刷新频率、流量显示与卡片排序</string>
+    <string name="settings_main_monitor_summary_format">%1$d秒 · 总流量%2$s · %3$s</string>
     <string name="settings_main_theme_display_title">主题与显示</string>
     <string name="settings_main_theme_display_summary">深色模式、背景与列表样式</string>
     <string name="settings_main_theme_display_summary_format">外观: %1$s</string>
@@ -80,6 +83,13 @@
     <string name="terminal_keyboard_toggle_show">显示键盘</string>
     <string name="terminal_keyboard_toggle_hide">隐藏键盘</string>
     <string name="terminal_keyboard_options">键盘选项</string>
+    <string name="terminal_soft_keyboard_toggle_show">软键盘</string>
+    <string name="terminal_soft_keyboard_toggle_hide">收起软键盘</string>
+    <string name="terminal_quick_keyboard_status">快捷键: %1$s | 软键盘: %2$s</string>
+    <string name="terminal_soft_keyboard_status_on">开启</string>
+    <string name="terminal_soft_keyboard_status_off">关闭</string>
+    <string name="terminal_clipboard_empty">剪贴板为空</string>
+    <string name="terminal_content_empty">终端内容为空</string>
     <string name="terminal_scrollback_hint">已离开底部</string>
     <string name="terminal_empty_title">还没有终端会话</string>
     <string name="terminal_empty_body">创建一个会话，开始连接并执行命令</string>
@@ -94,6 +104,22 @@
     <string name="session_status_disconnected">已断开</string>
     <string name="session_host_format">%1$s@%2$s:%3$d</string>
     <string name="session_host_no_user_format">%1$s:%2$d</string>
+    <string name="ssh_terminal_title">SSH 终端</string>
+    <string name="ssh_terminal_connecting">连接中...</string>
+    <string name="ssh_terminal_connected">已连接</string>
+    <string name="ssh_terminal_disconnected">已断开</string>
+    <string name="ssh_terminal_reconnect">重连</string>
+    <string name="ssh_terminal_disconnect">断开</string>
+    <string name="ssh_terminal_ctrl_c">Ctrl+C</string>
+    <string name="ssh_terminal_enter">Enter</string>
+    <string name="ssh_terminal_send">发送</string>
+    <string name="ssh_terminal_input_hint">输入命令</string>
+    <string name="ssh_terminal_missing_host">缺少主机信息，请先选择主机</string>
+    <string name="ssh_terminal_not_connected">连接尚未建立</string>
+    <string name="ssh_terminal_banner_connecting">[连接中] %1$s@%2$s:%3$d</string>
+    <string name="ssh_terminal_banner_connected">[已连接] %1$s@%2$s:%3$d</string>
+    <string name="ssh_terminal_banner_disconnected">[已断开]</string>
+    <string name="ssh_terminal_banner_reusing_session">[复用] 已附加到现有会话</string>
 
     <string name="settings_theme_mode_dark">深色</string>
     <string name="settings_theme_mode_light">浅色</string>
@@ -101,8 +127,22 @@
     <string name="settings_ssh_manage_title">SSH 管理</string>
     <string name="settings_cloud_sync_title">云同步</string>
     <string name="settings_terminal_title">终端设置</string>
+    <string name="settings_monitor_title">监控设置</string>
     <string name="settings_theme_display_title">主题与显示</string>
     <string name="settings_general_title">通用</string>
+
+    <string name="settings_monitor_refresh_interval_title">监控刷新间隔</string>
+    <string name="settings_monitor_refresh_interval_summary">%1$d 秒更新一次</string>
+    <string name="settings_monitor_process_limit_title">进程显示数量</string>
+    <string name="settings_monitor_process_limit_summary">最多显示 %1$d 个进程</string>
+    <string name="settings_monitor_show_total_traffic_title">显示总流量</string>
+    <string name="settings_monitor_show_total_traffic_on">显示实时与总流量</string>
+    <string name="settings_monitor_show_total_traffic_off">仅显示实时流量</string>
+    <string name="settings_monitor_traffic_scope_title">总流量统计口径</string>
+    <string name="settings_monitor_scope_session">会话累计</string>
+    <string name="settings_monitor_scope_boot">开机累计</string>
+    <string name="settings_monitor_card_order_title">监控卡片顺序</string>
+    <string name="settings_monitor_card_order_summary">设置负载、CPU、内存、网络、磁盘、进程的显示顺序</string>
 
     <string name="settings_ssh_quick_header">快捷入口</string>
     <string name="settings_ssh_quick_terminal_title">快速终端</string>
@@ -336,10 +376,32 @@
     <string name="monitor_disk_switch">切换磁盘</string>
     <string name="monitor_disk_details">磁盘详情 (lsblk)</string>
     <string name="monitor_net_speed">网速</string>
+    <string name="monitor_net_realtime_default">实时 ↓ 0B/s ↑ 0B/s</string>
+    <string name="monitor_net_realtime_fmt">实时 ↓ %1$s ↑ %2$s</string>
+    <string name="monitor_net_total_default">总计 ↓ 0B/s ↑ 0B/s</string>
+    <string name="monitor_net_down_default">下行: 0B/s</string>
+    <string name="monitor_net_up_default">上行: 0B/s</string>
+    <string name="monitor_net_total_fmt">总计 ↓ %1$s ↑ %2$s</string>
+    <string name="monitor_net_down_fmt">下行: %1$s</string>
+    <string name="monitor_net_up_fmt">上行: %1$s</string>
+    <string name="monitor_net_traffic_total_default">总流量: ↓ 0B ↑ 0B</string>
+    <string name="monitor_net_traffic_total_fmt">总流量: ↓ %1$s ↑ %2$s</string>
     <string name="monitor_disk_space">磁盘空间</string>
     <string name="monitor_disk_space_fmt">磁盘空间 (%1$s)</string>
+    <string name="monitor_disk_total_default">总容量 0.0 GB · 可用 0.0 GB</string>
+    <string name="monitor_disk_mount_default">挂载点: /</string>
+    <string name="monitor_disk_mount_fmt">挂载点: %1$s</string>
+    <string name="monitor_disk_total_with_free_fmt">总容量 %1$s GB · 可用 %2$s GB</string>
+    <string name="monitor_disk_used_label">已用</string>
+    <string name="monitor_disk_free_label">空闲</string>
     <string name="monitor_used_space">已用</string>
+    <string name="monitor_last_updated_default">更新: --:--:--</string>
+    <string name="monitor_last_updated_fmt">更新: %1$s</string>
+    <string name="monitor_system_load_fmt">1m %1$s  5m %2$s  15m %3$s</string>
+    <string name="monitor_mem_detail_fmt">%1$d%% · %2$s / %3$s GB</string>
     <string name="monitor_processes">进程列表</string>
+    <string name="monitor_process_meta_default">显示 0 / 0</string>
+    <string name="monitor_process_meta_fmt">显示 %1$d / %2$d</string>
     <string name="monitor_process_pid">PID</string>
     <string name="monitor_process_name">名称</string>
     <string name="monitor_process_cpu">CPU(%)</string>
@@ -557,6 +619,13 @@
         <item>跟随系统</item>
         <item>中文 (简体)</item>
         <item>English</item>
+    </string-array>
+
+    <string-array name="monitor_card_order_options">
+        <item>默认（负载 → CPU → 内存 → 网络 → 磁盘 → 进程）</item>
+        <item>性能优先（CPU → 内存 → 负载 → 网络 → 磁盘 → 进程）</item>
+        <item>网络优先（网络 → 负载 → CPU → 内存 → 磁盘 → 进程）</item>
+        <item>进程优先（进程 → CPU → 内存 → 网络 → 磁盘 → 负载）</item>
     </string-array>
 
     <!-- Session Persistence Settings -->

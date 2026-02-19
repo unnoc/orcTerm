@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/terminal_termius_bg">
+
+    <!-- 顶部工具栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="56dp"
+        android:orientation="vertical"
+        android:background="@color/terminal_termius_surface">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_add_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                app:icon="@drawable/ic_action_add"
+                app:iconTint="@color/terminal_key_text"
+                android:contentDescription="@string/action_add_host" />
+
+            <TextView
+                android:id="@+id/terminal_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:text="@string/nav_terminal_title"
+                android:textColor="@color/terminal_key_text"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/container_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="6dp"
+            android:clipToPadding="false"
+            android:overScrollMode="never" />
+    </LinearLayout>
+
+    <!-- 终端容器 -->
+    <FrameLayout
+        android:id="@+id/container_host"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@color/terminal_termius_bg">
+
+        <LinearLayout
+            android:id="@+id/terminal_empty_state"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="24dp"
+            android:paddingBottom="24dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:src="@drawable/ic_action_terminal"
+                app:tint="@color/terminal_key_text" />
+
+            <TextView
+                android:id="@+id/terminal_empty_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/terminal_empty_title"
+                android:textColor="@color/terminal_key_text"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/terminal_empty_body"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/terminal_empty_body"
+                android:textColor="@color/terminal_key_text"
+                android:textSize="13sp"
+                android:gravity="center" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/terminal_empty_action"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/terminal_empty_action"
+                android:textColor="@color/terminal_key_text"
+                app:icon="@drawable/ic_action_add"
+                app:iconTint="@color/terminal_key_text" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/terminal_termius_surface_variant" />
+
+    <!-- 底部输入区域 - 包含键盘和输入框 -->
+    <LinearLayout
+        android:id="@+id/input_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:animateLayoutChanges="true"
+        android:background="@color/terminal_termius_surface">
+
+        <LinearLayout
+            android:id="@+id/keyboard_control_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
+
+            <TextView
+                android:id="@+id/tv_keyboard_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/terminal_keyboard_status_shown"
+                android:textColor="@color/terminal_key_text"
+                android:textSize="12sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_toggle_keypad"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/terminal_keyboard_toggle_hide"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:textColor="@color/terminal_key_text" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_keyboard_options"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                app:icon="@drawable/ic_action_settings"
+                app:iconTint="@color/terminal_key_text"
+                android:contentDescription="@string/terminal_keyboard_options" />
+        </LinearLayout>
+
+        <!-- 虚拟键盘 -->
+        <com.orcterm.ui.widget.TerminalKeypadView
+            android:id="@+id/keypad_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:background="@color/terminal_termius_surface_variant" />
+
+        <!-- 隐藏的输入框 - 用于接收输入法输入 -->
+        <com.orcterm.ui.widget.TerminalInputView
+            android:id="@+id/input_command"
+            android:layout_width="1px"
+            android:layout_height="1px"
+            android:layout_gravity="bottom|end"
+            android:background="@null"
+            android:cursorVisible="false"
+            android:textColor="@android:color/transparent"
+            android:imeOptions="flagNoExtractUi|actionNone"
+            android:inputType="textNoSuggestions|textVisiblePassword" />
+
+        <!-- Removed keyboard control bar -->
+    </LinearLayout>
+
+</LinearLayout>

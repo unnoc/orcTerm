@@ -79,6 +79,7 @@ public class SettingsFragment extends Fragment {
 
         setupItem(view, R.id.setting_ssh_manage, R.drawable.ic_action_computer, getString(R.string.settings_main_ssh_title), getString(R.string.settings_main_ssh_summary), v -> openDetail("ssh"));
         setupItem(view, R.id.setting_terminal_settings, R.drawable.ic_action_terminal, getString(R.string.settings_main_terminal_title), getString(R.string.settings_main_terminal_summary), v -> openDetail("terminal"));
+        setupItem(view, R.id.setting_monitor_settings, R.drawable.ic_action_memory, getString(R.string.settings_main_monitor_title), getString(R.string.settings_main_monitor_summary), v -> openDetail("monitor"));
         setupItem(view, R.id.setting_theme_display, R.drawable.ic_action_settings, getString(R.string.settings_main_theme_display_title), getString(R.string.settings_main_theme_display_summary), v -> openDetail("theme_display"));
         setupItem(view, R.id.setting_session_policy, R.drawable.ic_action_computer, getString(R.string.settings_main_session_policy_title), getString(R.string.settings_main_session_policy_summary), v -> openDetail("session_policy"));
         setupItem(view, R.id.setting_cloud_sync, R.drawable.ic_action_cloud_upload, getString(R.string.settings_main_cloud_title), getString(R.string.settings_main_cloud_summary), v -> openDetail("cloud_sync"));
@@ -133,6 +134,7 @@ public class SettingsFragment extends Fragment {
         View cloud = view.findViewById(R.id.setting_cloud_sync);
         View file = view.findViewById(R.id.setting_file_management);
         View terminal = view.findViewById(R.id.setting_terminal_settings);
+        View monitor = view.findViewById(R.id.setting_monitor_settings);
         View theme = view.findViewById(R.id.setting_theme_display);
         View sessionPolicy = view.findViewById(R.id.setting_session_policy);
         View backup = view.findViewById(R.id.setting_backup);
@@ -160,6 +162,20 @@ public class SettingsFragment extends Fragment {
         if (terminal != null) {
             TextView summary = terminal.findViewById(R.id.summary);
             summary.setText(getString(R.string.settings_main_terminal_summary));
+            summary.setVisibility(View.VISIBLE);
+        }
+        if (monitor != null) {
+            TextView summary = monitor.findViewById(R.id.summary);
+            int refresh = prefs.getInt("monitor_refresh_interval_sec", 3);
+            boolean showTotal = prefs.getBoolean("monitor_show_total_traffic", true);
+            String scope = prefs.getString("monitor_traffic_scope", "session");
+            String scopeLabel = "boot".equals(scope)
+                    ? getString(R.string.settings_monitor_scope_boot)
+                    : getString(R.string.settings_monitor_scope_session);
+            String totalLabel = showTotal
+                    ? getString(R.string.settings_enabled)
+                    : getString(R.string.settings_disabled);
+            summary.setText(getString(R.string.settings_main_monitor_summary_format, refresh, totalLabel, scopeLabel));
             summary.setVisibility(View.VISIBLE);
         }
         if (theme != null) {

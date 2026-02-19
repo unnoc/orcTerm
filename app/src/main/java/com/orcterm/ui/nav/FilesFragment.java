@@ -15,7 +15,6 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.orcterm.R;
-import com.orcterm.core.terminal.TerminalSession;
 import com.orcterm.core.session.SessionInfo;
 import com.orcterm.core.session.SessionManager;
 import com.orcterm.ui.SftpActivity;
@@ -100,13 +99,11 @@ public class FilesFragment extends Fragment implements SessionManager.SessionLis
             adapter.setSessions(new ArrayList<>());
             return;
         }
-        List<SessionInfo> sessions = SessionManager.getInstance().getSessions();
+        List<SessionInfo> sessions = SessionManager.getInstance().getSftpSessions();
         SessionInfo selected = null;
         for (SessionInfo session : sessions) {
             if (matchesCurrentHost(session)) {
-                TerminalSession ts = SessionManager.getInstance().getTerminalSession(session.id);
-                boolean connected = ts != null && ts.isConnected();
-                if (!connected) {
+                if (!session.connected) {
                     continue;
                 }
                 if (selected == null || session.timestamp > selected.timestamp) {
@@ -140,6 +137,7 @@ public class FilesFragment extends Fragment implements SessionManager.SessionLis
         if (session == null) return false;
         if (currentPort > 0 && session.port != currentPort) return false;
         if (!TextUtils.equals(currentHost, session.hostname)) return false;
+        if (TextUtils.isEmpty(currentUser)) return true;
         return TextUtils.equals(currentUser, session.username);
     }
 }

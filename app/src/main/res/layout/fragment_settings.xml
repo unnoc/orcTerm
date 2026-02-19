@@ -56,6 +56,11 @@
         <View style="@style/SettingsDivider"/>
 
         <include layout="@layout/item_setting"
+            android:id="@+id/setting_monitor_settings"/>
+
+        <View style="@style/SettingsDivider"/>
+
+        <include layout="@layout/item_setting"
             android:id="@+id/setting_theme_display"/>
 
         <View style="@style/SettingsDivider"/>

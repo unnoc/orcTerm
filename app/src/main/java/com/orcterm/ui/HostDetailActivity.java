@@ -1,5 +1,6 @@
 package com.orcterm.ui;
 
+import android.content.SharedPreferences;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -7,6 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Gravity;
 import android.text.TextUtils;
 import android.widget.ImageButton;
@@ -30,22 +32,30 @@ import com.github.mikephil.charting.data.LineDataSet;
 import com.github.mikephil.charting.data.PieData;
 import com.github.mikephil.charting.data.PieDataSet;
 import com.github.mikephil.charting.data.PieEntry;
+import com.github.mikephil.charting.formatter.IndexAxisValueFormatter;
 import com.google.android.material.color.MaterialColors;
 import com.orcterm.R;
 import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.core.session.SessionInfo;
 import com.orcterm.core.session.SessionManager;
+import com.orcterm.core.terminal.TerminalSession;
 import com.orcterm.util.CommandConstants;
 import com.orcterm.util.OsIconUtils;
 import com.orcterm.data.AppDatabase;
 import com.orcterm.data.HostEntity;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -54,14 +64,17 @@ public class HostDetailActivity extends AppCompatActivity {
     private TextView tvHostname, tvRelease, tvIp;
     private ImageView ivOsIcon;
     private ProgressBar progressCpu, progressMem;
-    private TextView tvSystemLoad, tvCpuPercent, tvMemUsage, tvMemDetailSmall, tvDiskPercent, tvDiskUsed, tvDiskTotal, tvNetSpeed;
-    private TextView tvDiskTitle, tvDiskTree;
-    private LineChart chartNetwork;
+    private TextView tvSystemLoad, tvCpuPercent, tvMemPercent, tvMemUsage, tvMemDetailSmall, tvDiskPercent, tvDiskUsed, tvDiskTotal, tvNetSpeed;
+    private TextView tvDiskTitle, tvDiskTree, tvDiskMount;
+    private TextView tvMonitorUpdated, tvNetDown, tvNetUp, tvNetTotalTraffic, tvProcessMeta;
+    private LineChart chartLoad, chartNetwork;
     private PieChart chartDisk;
+    private View cardSystemLoad, cardCpuLoad, cardMemory, cardNetwork, cardDisk, cardProcess;
     private RecyclerView rvProcesses;
     private ImageButton btnRefresh;
     private TextView tvSortCpu, tvSortMem, tvSortConn;
     private ProcessAdapter processAdapter;
+    private SharedPreferences prefs;
 
     private String hostname, username, password;
     private int port;
@@ -83,16 +96,30 @@ public class HostDetailActivity extends AppCompatActivity {
 
     private String lsblkOutput = "";
     private List<Entry> netDownloadEntries = new ArrayList<>();
+    private List<ProcessInfo> allProcessItems = new ArrayList<>();
     private List<ProcessInfo> processItems = new ArrayList<>();
     private List<DiskInfo> diskList = new ArrayList<>();
     private int currentDiskIndex = 0;
     private int processSortMode = 0;
+    private int processTotalCount = 0;
     private long prevCpuTotal = 0, prevCpuWork = 0;
     private long prevNetRx = 0, prevNetTx = 0;
     private long prevTimestamp = 0;
+    private long totalDownBytes = 0, totalUpBytes = 0;
     private String lastSavedOsVersion = "";
     private long lastOsSaveTime = 0;
     private static final long OS_INFO_SAVE_INTERVAL_MS = 30000;
+    private static final int DEFAULT_MONITOR_VISIBLE_PROCESSES = 80;
+    private static final int DEFAULT_MONITOR_REFRESH_INTERVAL_SEC = 3;
+    private static final String DEFAULT_MONITOR_TRAFFIC_SCOPE = "session";
+    private static final String DEFAULT_MONITOR_CARD_ORDER = "load,cpu,memory,network,disk,process";
+    private static final List<String> MONITOR_CARD_KEYS =
+            Arrays.asList("load", "cpu", "memory", "network", "disk", "process");
+    private volatile int monitorRefreshIntervalMs = DEFAULT_MONITOR_REFRESH_INTERVAL_SEC * 1000;
+    private volatile int monitorProcessLimit = DEFAULT_MONITOR_VISIBLE_PROCESSES;
+    private volatile boolean monitorShowTotalTraffic = true;
+    private volatile String monitorTrafficScope = DEFAULT_MONITOR_TRAFFIC_SCOPE;
+    private String monitorCardOrder = DEFAULT_MONITOR_CARD_ORDER;
 
     private static class DiskInfo {
         String filesystem;
@@ -119,12 +146,15 @@ public class HostDetailActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_host_detail);
+        prefs = getSharedPreferences("orcterm_prefs", MODE_PRIVATE);
 
         setSupportActionBar(findViewById(R.id.toolbar));
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         getSupportActionBar().setTitle("主机详情");
 
         initViews();
+        loadMonitorPrefs();
+        applyMonitorSettingsToUi();
         initCharts();
         getIntentData();
         setupListeners();
@@ -139,9 +169,11 @@ public class HostDetailActivity extends AppCompatActivity {
         ivOsIcon = findViewById(R.id.iv_os_icon);
 
         tvSystemLoad = findViewById(R.id.tv_system_load);
+        chartLoad = findViewById(R.id.chart_load);
         tvCpuPercent = findViewById(R.id.tv_cpu_percent);
         progressCpu = findViewById(R.id.progress_cpu);
 
+        tvMemPercent = findViewById(R.id.tv_mem_percent);
         tvMemUsage = findViewById(R.id.tv_mem_usage);
         tvMemDetailSmall = findViewById(R.id.tv_mem_detail_small);
         progressMem = findViewById(R.id.progress_mem);
@@ -151,8 +183,13 @@ public class HostDetailActivity extends AppCompatActivity {
         tvDiskTotal = findViewById(R.id.tv_disk_total);
         tvDiskTitle = findViewById(R.id.tv_disk_title);
         tvDiskTree = findViewById(R.id.tv_disk_tree);
+        tvDiskMount = findViewById(R.id.tv_disk_mount);
 
+        tvMonitorUpdated = findViewById(R.id.tv_monitor_updated);
         tvNetSpeed = findViewById(R.id.tv_net_speed);
+        tvNetDown = findViewById(R.id.tv_net_down);
+        tvNetUp = findViewById(R.id.tv_net_up);
+        tvNetTotalTraffic = findViewById(R.id.tv_net_total_traffic);
         chartNetwork = findViewById(R.id.chart_network);
         chartDisk = findViewById(R.id.chart_disk);
 
@@ -165,6 +202,13 @@ public class HostDetailActivity extends AppCompatActivity {
         rvProcesses.setLayoutManager(new LinearLayoutManager(this));
         processAdapter = new ProcessAdapter();
         rvProcesses.setAdapter(processAdapter);
+        tvProcessMeta = findViewById(R.id.tv_process_meta);
+        cardSystemLoad = findViewById(R.id.card_system_load);
+        cardCpuLoad = findViewById(R.id.card_cpu_load);
+        cardMemory = findViewById(R.id.card_memory);
+        cardNetwork = findViewById(R.id.card_network);
+        cardDisk = findViewById(R.id.card_disk);
+        cardProcess = findViewById(R.id.card_process);
 
         if (tvDiskTitle != null) {
             tvDiskTitle.setOnClickListener(v -> showDiskSelector());
@@ -173,28 +217,115 @@ public class HostDetailActivity extends AppCompatActivity {
         if (tvSortCpu != null) {
             tvSortCpu.setOnClickListener(v -> {
                 processSortMode = 0;
-                sortProcessItems();
-                processAdapter.notifyDataSetChanged();
+                refreshProcessList();
             });
         }
         if (tvSortMem != null) {
             tvSortMem.setOnClickListener(v -> {
                 processSortMode = 1;
-                sortProcessItems();
-                processAdapter.notifyDataSetChanged();
+                refreshProcessList();
             });
         }
         if (tvSortConn != null) {
             tvSortConn.setOnClickListener(v -> {
                 processSortMode = 2;
-                sortProcessItems();
-                processAdapter.notifyDataSetChanged();
+                refreshProcessList();
             });
         }
 
         if (btnRefresh != null) {
             btnRefresh.setOnClickListener(v -> executor.execute(this::fetchStats));
         }
+        updateSortHeaderUi();
+        updateProcessMeta();
+    }
+
+    private void loadMonitorPrefs() {
+        if (prefs == null) {
+            return;
+        }
+        String oldScope = monitorTrafficScope;
+        int refreshSec = prefs.getInt("monitor_refresh_interval_sec", DEFAULT_MONITOR_REFRESH_INTERVAL_SEC);
+        refreshSec = Math.max(1, Math.min(60, refreshSec));
+        monitorRefreshIntervalMs = refreshSec * 1000;
+
+        int processLimit = prefs.getInt("monitor_process_limit", DEFAULT_MONITOR_VISIBLE_PROCESSES);
+        monitorProcessLimit = Math.max(10, Math.min(500, processLimit));
+
+        monitorShowTotalTraffic = prefs.getBoolean("monitor_show_total_traffic", true);
+
+        String scope = prefs.getString("monitor_traffic_scope", DEFAULT_MONITOR_TRAFFIC_SCOPE);
+        monitorTrafficScope = "boot".equals(scope) ? "boot" : "session";
+
+        String order = prefs.getString("monitor_card_order", DEFAULT_MONITOR_CARD_ORDER);
+        monitorCardOrder = sanitizeMonitorCardOrder(order);
+
+        if (!TextUtils.equals(oldScope, monitorTrafficScope) && "session".equals(monitorTrafficScope)) {
+            totalDownBytes = 0;
+            totalUpBytes = 0;
+        }
+    }
+
+    private String sanitizeMonitorCardOrder(String order) {
+        Set<String> seen = new LinkedHashSet<>();
+        if (!TextUtils.isEmpty(order)) {
+            String[] parts = order.split(",");
+            for (String raw : parts) {
+                String key = raw == null ? "" : raw.trim().toLowerCase(Locale.US);
+                if (MONITOR_CARD_KEYS.contains(key)) {
+                    seen.add(key);
+                }
+            }
+        }
+        for (String key : MONITOR_CARD_KEYS) {
+            seen.add(key);
+        }
+        return TextUtils.join(",", seen);
+    }
+
+    private void applyMonitorSettingsToUi() {
+        if (tvNetTotalTraffic != null) {
+            tvNetTotalTraffic.setVisibility(monitorShowTotalTraffic ? View.VISIBLE : View.GONE);
+        }
+        applyMonitorCardOrder();
+        refreshProcessList();
+    }
+
+    private void applyMonitorCardOrder() {
+        View anchor = cardSystemLoad != null ? cardSystemLoad : cardCpuLoad;
+        if (anchor == null) {
+            return;
+        }
+        ViewGroup parent = (ViewGroup) anchor.getParent();
+        if (parent == null) {
+            return;
+        }
+        List<View> ordered = new ArrayList<>();
+        for (String key : monitorCardOrder.split(",")) {
+            View card = getMonitorCardView(key.trim());
+            if (card != null && card.getParent() == parent) {
+                ordered.add(card);
+            }
+        }
+        if (ordered.isEmpty()) {
+            return;
+        }
+        for (View card : ordered) {
+            parent.removeView(card);
+        }
+        for (View card : ordered) {
+            parent.addView(card);
+        }
+    }
+
+    private View getMonitorCardView(String key) {
+        if ("load".equals(key)) return cardSystemLoad;
+        if ("cpu".equals(key)) return cardCpuLoad;
+        if ("memory".equals(key)) return cardMemory;
+        if ("network".equals(key)) return cardNetwork;
+        if ("disk".equals(key)) return cardDisk;
+        if ("process".equals(key)) return cardProcess;
+        return null;
     }
 
     private void getIntentData() {
@@ -208,12 +339,13 @@ public class HostDetailActivity extends AppCompatActivity {
     }
 
     private void setupListeners() {
-        findViewById(R.id.btn_terminal_icon).setOnClickListener(v -> openActivity(TerminalActivity.class));
+        findViewById(R.id.btn_terminal_icon).setOnClickListener(v -> openActivity(SshTerminalActivity.class));
         findViewById(R.id.btn_docker_icon).setOnClickListener(v -> openActivity(DockerActivity.class));
         findViewById(R.id.btn_file_icon).setOnClickListener(v -> openActivity(SftpActivity.class));
     }
 
     private void openActivity(Class<?> cls) {
+        persistCurrentHostPreference();
         Intent intent = new Intent(this, cls);
         intent.putExtra("host_id", hostId);
         intent.putExtra("hostname", hostname);
@@ -222,7 +354,44 @@ public class HostDetailActivity extends AppCompatActivity {
         intent.putExtra("password", password);
         intent.putExtra("auth_type", authType);
         intent.putExtra("key_path", keyPath);
+        long reusableSessionId = findReusableSessionId();
+        if (reusableSessionId > 0) {
+            intent.putExtra("session_id", reusableSessionId);
+        }
         startActivity(intent);
+    }
+
+    private void persistCurrentHostPreference() {
+        if (TextUtils.isEmpty(hostname) || TextUtils.isEmpty(username) || port <= 0) {
+            return;
+        }
+        getSharedPreferences("orcterm_prefs", MODE_PRIVATE)
+            .edit()
+            .putLong("current_host_id", hostId)
+            .putString("current_host_hostname", hostname)
+            .putString("current_host_username", username)
+            .putInt("current_host_port", port)
+            .apply();
+    }
+
+    private long findReusableSessionId() {
+        SessionManager manager = SessionManager.getInstance();
+        SessionInfo best = null;
+        for (SessionInfo info : manager.getSessions()) {
+            if (info == null) continue;
+            if (!TextUtils.equals(hostname, info.hostname)) continue;
+            if (port != info.port) continue;
+            if (!TextUtils.equals(username, info.username)) continue;
+            TerminalSession ts = manager.getTerminalSession(info.id);
+            if (ts == null || !ts.isConnected() || ts.getHandle() == 0) continue;
+            if (best == null || info.timestamp > best.timestamp) {
+                best = info;
+            }
+        }
+        if (best != null) {
+            return best.id;
+        }
+        return sharedSessionId > 0 ? sharedSessionId : -1L;
     }
 
     private void startMonitoring() {
@@ -237,7 +406,7 @@ public class HostDetailActivity extends AppCompatActivity {
 
                 while (isMonitoring) {
                     fetchStats();
-                    Thread.sleep(3000);
+                    Thread.sleep(monitorRefreshIntervalMs);
                 }
             } catch (Exception e) {
                 mainHandler.post(() -> Toast.makeText(HostDetailActivity.this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show());
@@ -354,6 +523,34 @@ public class HostDetailActivity extends AppCompatActivity {
     }
 
     private void initCharts() {
+        if (chartLoad != null) {
+            chartLoad.getDescription().setEnabled(false);
+            chartLoad.setTouchEnabled(false);
+            chartLoad.setDragEnabled(false);
+            chartLoad.setScaleEnabled(false);
+            chartLoad.setPinchZoom(false);
+            chartLoad.setBackgroundColor(Color.TRANSPARENT);
+            chartLoad.getLegend().setEnabled(false);
+            chartLoad.setNoDataText("");
+            chartLoad.setHighlightPerDragEnabled(false);
+            chartLoad.setHighlightPerTapEnabled(false);
+            chartLoad.setViewPortOffsets(18, 6, 18, 18);
+            XAxis xAxis = chartLoad.getXAxis();
+            xAxis.setEnabled(true);
+            xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
+            xAxis.setDrawGridLines(false);
+            xAxis.setAxisMinimum(0f);
+            xAxis.setAxisMaximum(2f);
+            xAxis.setGranularity(1f);
+            xAxis.setLabelCount(3, true);
+            xAxis.setTextSize(10f);
+            xAxis.setTextColor(MaterialColors.getColor(chartLoad, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY));
+            xAxis.setValueFormatter(new IndexAxisValueFormatter(new String[]{"1m", "5m", "15m"}));
+            YAxis leftAxis = chartLoad.getAxisLeft();
+            leftAxis.setEnabled(false);
+            YAxis rightAxis = chartLoad.getAxisRight();
+            rightAxis.setEnabled(false);
+        }
         if (chartNetwork != null) {
             chartNetwork.getDescription().setEnabled(false);
             chartNetwork.setTouchEnabled(false);
@@ -415,11 +612,10 @@ public class HostDetailActivity extends AppCompatActivity {
                 String[] parts = l.split("\\s+");
                 if (parts.length >= 3) {
                     try {
-                        Double.parseDouble(parts[0]);
-                        String load = parts[0] + " " + parts[1] + " " + parts[2];
-                        runOnUiThread(() -> {
-                            if (tvSystemLoad != null) tvSystemLoad.setText(load);
-                        });
+                        double load1 = Double.parseDouble(parts[0]);
+                        double load5 = Double.parseDouble(parts[1]);
+                        double load15 = Double.parseDouble(parts[2]);
+                        runOnUiThread(() -> updateLoadUI(load1, load5, load15));
                         break;
                     } catch (Exception e) {}
                 }
@@ -491,16 +687,26 @@ public class HostDetailActivity extends AppCompatActivity {
                     }
                 }
             }
+            float rxBytesPerSec = 0f;
+            float txBytesPerSec = 0f;
             if (prevTimestamp > 0) {
                 long timeDelta = System.currentTimeMillis() - prevTimestamp;
                 if (timeDelta > 0) {
                     long rxDelta = rx - prevNetRx;
                     long txDelta = tx - prevNetTx;
-                    float rxBytesPerSec = (float) rxDelta * 1000f / timeDelta;
-                    float txBytesPerSec = (float) txDelta * 1000f / timeDelta;
-                    runOnUiThread(() -> updateNetUI(rxBytesPerSec, txBytesPerSec));
+                    if (rxDelta < 0) rxDelta = 0;
+                    if (txDelta < 0) txDelta = 0;
+                    totalDownBytes += rxDelta;
+                    totalUpBytes += txDelta;
+                    rxBytesPerSec = (float) rxDelta * 1000f / timeDelta;
+                    txBytesPerSec = (float) txDelta * 1000f / timeDelta;
                 }
             }
+            long totalDown = "boot".equals(monitorTrafficScope) ? rx : totalDownBytes;
+            long totalUp = "boot".equals(monitorTrafficScope) ? tx : totalUpBytes;
+            final float finalRxBytesPerSec = rxBytesPerSec;
+            final float finalTxBytesPerSec = txBytesPerSec;
+            runOnUiThread(() -> updateNetUI(finalRxBytesPerSec, finalTxBytesPerSec, totalDown, totalUp));
             prevNetRx = rx;
             prevNetTx = tx;
             prevTimestamp = System.currentTimeMillis();
@@ -621,37 +827,99 @@ public class HostDetailActivity extends AppCompatActivity {
             }
             runOnUiThread(() -> updateProcessUI(newProcs));
         }
+
+        runOnUiThread(() -> updateMonitorUpdated(now));
+    }
+
+    private void updateLoadUI(double load1, double load5, double load15) {
+        if (tvSystemLoad != null) {
+            tvSystemLoad.setText(
+                getString(
+                    R.string.monitor_system_load_fmt,
+                    String.format(Locale.getDefault(), "%.2f", load1),
+                    String.format(Locale.getDefault(), "%.2f", load5),
+                    String.format(Locale.getDefault(), "%.2f", load15)
+                )
+            );
+        }
+        if (chartLoad == null) {
+            return;
+        }
+        List<Entry> entries = new ArrayList<>(3);
+        entries.add(new Entry(0f, (float) load1));
+        entries.add(new Entry(1f, (float) load5));
+        entries.add(new Entry(2f, (float) load15));
+        LineDataSet set = new LineDataSet(entries, "Load");
+        int lineColor = MaterialColors.getColor(chartLoad, com.google.android.material.R.attr.colorPrimary, Color.parseColor("#58D1FF"));
+        set.setColor(lineColor);
+        set.setLineWidth(2f);
+        set.setDrawCircles(true);
+        set.setCircleColor(lineColor);
+        set.setCircleRadius(3f);
+        set.setCircleHoleRadius(1.6f);
+        set.setDrawValues(true);
+        set.setValueTextSize(9f);
+        set.setValueTextColor(MaterialColors.getColor(chartLoad, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY));
+        set.setMode(LineDataSet.Mode.LINEAR);
+        set.setDrawHorizontalHighlightIndicator(false);
+        set.setDrawVerticalHighlightIndicator(false);
+        chartLoad.setData(new LineData(set));
+        chartLoad.invalidate();
     }
 
     private void updateCpuUI(int percent) {
-        if (tvCpuPercent != null) tvCpuPercent.setText(String.valueOf(percent));
-        if (progressCpu != null) progressCpu.setProgress(percent);
+        int value = Math.max(0, Math.min(100, percent));
+        if (tvCpuPercent != null) {
+            tvCpuPercent.setText(String.format(Locale.getDefault(), "%d%%", value));
+        }
+        if (progressCpu != null) progressCpu.setProgress(value);
     }
 
     private void updateMemUI(long usedKb, long totalKb) {
         float totalGb = totalKb / 1024f / 1024f;
         float usedGb = usedKb / 1024f / 1024f;
-        int percent = (int) (usedKb * 100 / totalKb);
-        if (tvMemUsage != null) tvMemUsage.setText(String.format("%.1f", usedGb));
-        if (tvMemDetailSmall != null) tvMemDetailSmall.setText(String.format("%d%% of %.0fGB", percent, totalGb));
-        if (progressMem != null) progressMem.setProgress(percent);
+        int percent = totalKb > 0 ? (int) (usedKb * 100 / totalKb) : 0;
+        int value = Math.max(0, Math.min(100, percent));
+        if (tvMemPercent != null) {
+            tvMemPercent.setText(String.format(Locale.getDefault(), "%d%%", value));
+        }
+        if (tvMemUsage != null) {
+            tvMemUsage.setText(String.format(Locale.getDefault(), "%.1f GB", usedGb));
+        }
+        if (tvMemDetailSmall != null) {
+            tvMemDetailSmall.setText(
+                getString(
+                    R.string.monitor_mem_detail_fmt,
+                    value,
+                    String.format(Locale.getDefault(), "%.1f", usedGb),
+                    String.format(Locale.getDefault(), "%.1f", totalGb)
+                )
+            );
+        }
+        if (progressMem != null) progressMem.setProgress(value);
     }
 
-    private void updateNetUI(float downBytesPerSec, float upBytesPerSec) {
+    private void updateNetUI(float downBytesPerSec, float upBytesPerSec, long totalDown, long totalUp) {
         float downMb = downBytesPerSec / 1024f / 1024f;
-        float upMb = upBytesPerSec / 1024f / 1024f;
+        String downText = formatSpeed(downBytesPerSec);
+        String upText = formatSpeed(upBytesPerSec);
         if (tvNetSpeed != null) {
-            String downText = downMb >= 1f
-                ? String.format("%.1fMB/s", downMb)
-                : downBytesPerSec >= 1024f
-                    ? String.format("%.0fKB/s", downBytesPerSec / 1024f)
-                    : String.format("%.0fB/s", downBytesPerSec);
-            String upText = upMb >= 1f
-                ? String.format("%.1fMB/s", upMb)
-                : upBytesPerSec >= 1024f
-                    ? String.format("%.0fKB/s", upBytesPerSec / 1024f)
-                    : String.format("%.0fB/s", upBytesPerSec);
-            tvNetSpeed.setText(String.format("↓ %s ↑ %s", downText, upText));
+            tvNetSpeed.setText(getString(R.string.monitor_net_realtime_fmt, downText, upText));
+        }
+        if (tvNetDown != null) {
+            tvNetDown.setText(getString(R.string.monitor_net_down_fmt, downText));
+        }
+        if (tvNetUp != null) {
+            tvNetUp.setText(getString(R.string.monitor_net_up_fmt, upText));
+        }
+        if (tvNetTotalTraffic != null) {
+            tvNetTotalTraffic.setText(
+                getString(
+                    R.string.monitor_net_traffic_total_fmt,
+                    formatTraffic(totalDown),
+                    formatTraffic(totalUp)
+                )
+            );
         }
         if (chartNetwork == null) return;
         if (netDownloadEntries.size() > 20) netDownloadEntries.remove(0);
@@ -764,19 +1032,31 @@ public class HostDetailActivity extends AppCompatActivity {
         if (tvDiskTitle != null) {
             tvDiskTitle.setText(String.format(getString(R.string.monitor_disk_space_fmt), disk.filesystem));
         }
+        if (tvDiskMount != null) {
+            tvDiskMount.setText(getString(R.string.monitor_disk_mount_fmt, disk.mountPoint));
+        }
         float totalGb = totalBytes / 1024f / 1024f / 1024f;
         float usedGb = usedBytes / 1024f / 1024f / 1024f;
+        float freeGb = disk.available / 1024f / 1024f / 1024f;
         int percent = (totalBytes > 0) ? (int) (usedBytes * 100 / totalBytes) : 0;
-        if (tvDiskPercent != null) tvDiskPercent.setText(String.format("%d%%", percent));
-        if (tvDiskUsed != null) tvDiskUsed.setText(String.format("%.1f GB", usedGb));
-        if (tvDiskTotal != null) tvDiskTotal.setText(String.format("Total Capacity %.1fGB", totalGb));
+        if (tvDiskPercent != null) tvDiskPercent.setText(String.format(Locale.getDefault(), "%d%%", percent));
+        if (tvDiskUsed != null) tvDiskUsed.setText(String.format(Locale.getDefault(), "%.1f GB", usedGb));
+        if (tvDiskTotal != null) {
+            tvDiskTotal.setText(
+                getString(
+                    R.string.monitor_disk_total_with_free_fmt,
+                    String.format(Locale.getDefault(), "%.1f", totalGb),
+                    String.format(Locale.getDefault(), "%.1f", freeGb)
+                )
+            );
+        }
         if (chartDisk != null) {
             PieData data = chartDisk.getData();
             if (data != null) {
                 PieDataSet set = (PieDataSet) data.getDataSet();
                 ArrayList<PieEntry> entries = new ArrayList<>();
-                entries.add(new PieEntry(usedBytes, "Used"));
-                entries.add(new PieEntry(totalBytes - usedBytes, "Free"));
+                entries.add(new PieEntry(usedBytes, getString(R.string.monitor_disk_used_label)));
+                entries.add(new PieEntry(totalBytes - usedBytes, getString(R.string.monitor_disk_free_label)));
                 int colorUsed = MaterialColors.getColor(chartDisk, com.google.android.material.R.attr.colorPrimary, Color.parseColor("#58D1FF"));
                 int colorFree = MaterialColors.getColor(chartDisk, com.google.android.material.R.attr.colorSurfaceVariant, Color.parseColor("#21262D"));
                 set.setColors(colorUsed, colorFree);
@@ -788,8 +1068,8 @@ public class HostDetailActivity extends AppCompatActivity {
                 chartDisk.invalidate();
             } else {
                 ArrayList<PieEntry> entries = new ArrayList<>();
-                entries.add(new PieEntry(usedBytes, "Used"));
-                entries.add(new PieEntry(totalBytes - usedBytes, "Free"));
+                entries.add(new PieEntry(usedBytes, getString(R.string.monitor_disk_used_label)));
+                entries.add(new PieEntry(totalBytes - usedBytes, getString(R.string.monitor_disk_free_label)));
                 PieDataSet dataSet = new PieDataSet(entries, "");
                 dataSet.setDrawIcons(false);
                 dataSet.setSliceSpace(0f);
@@ -808,10 +1088,12 @@ public class HostDetailActivity extends AppCompatActivity {
     }
 
     private void updateProcessUI(List<ProcessInfo> newProcs) {
-        processItems.clear();
-        processItems.addAll(newProcs);
-        sortProcessItems();
-        if (processAdapter != null) processAdapter.notifyDataSetChanged();
+        processTotalCount = newProcs == null ? 0 : newProcs.size();
+        allProcessItems.clear();
+        if (newProcs != null) {
+            allProcessItems.addAll(newProcs);
+        }
+        refreshProcessList();
     }
 
     private static class ProcessInfo {
@@ -829,6 +1111,13 @@ public class HostDetailActivity extends AppCompatActivity {
         public ProcessViewHolder onCreateViewHolder(android.view.ViewGroup parent, int viewType) {
             float density = parent.getResources().getDisplayMetrics().density;
             int padding = (int) (4 * density);
+            int pidWidth = (int) (60 * density);
+            int nameWidth = (int) (150 * density);
+            int cpuWidth = (int) (70 * density);
+            int memWidth = (int) (70 * density);
+            int connWidth = (int) (60 * density);
+            int statusWidth = (int) (70 * density);
+            int startWidth = (int) (120 * density);
             LinearLayout layout = new LinearLayout(parent.getContext());
             layout.setOrientation(LinearLayout.HORIZONTAL);
             layout.setPadding(0, padding, 0, padding);
@@ -841,7 +1130,7 @@ public class HostDetailActivity extends AppCompatActivity {
             pid.setTextSize(12);
             pid.setMaxLines(1);
             pid.setIncludeFontPadding(false);
-            layout.addView(pid, new LinearLayout.LayoutParams((int) (72 * density), android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            layout.addView(pid, new LinearLayout.LayoutParams(pidWidth, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             TextView name = new TextView(parent.getContext());
             name.setTextColor(colorOnSurface);
             name.setTextSize(12);
@@ -851,38 +1140,38 @@ public class HostDetailActivity extends AppCompatActivity {
             name.setClickable(true);
             name.setFocusable(true);
             name.setBackgroundResource(android.R.drawable.list_selector_background);
-            layout.addView(name, new LinearLayout.LayoutParams((int) (200 * density), android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            layout.addView(name, new LinearLayout.LayoutParams(nameWidth, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             TextView cpu = new TextView(parent.getContext());
             cpu.setTextColor(colorSecondary);
             cpu.setTextSize(12);
             cpu.setMaxLines(1);
             cpu.setIncludeFontPadding(false);
-            layout.addView(cpu, new LinearLayout.LayoutParams((int) (90 * density), android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            layout.addView(cpu, new LinearLayout.LayoutParams(cpuWidth, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             TextView mem = new TextView(parent.getContext());
             mem.setTextColor(colorSecondary);
             mem.setTextSize(12);
             mem.setMaxLines(1);
             mem.setIncludeFontPadding(false);
-            layout.addView(mem, new LinearLayout.LayoutParams((int) (90 * density), android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            layout.addView(mem, new LinearLayout.LayoutParams(memWidth, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             TextView conn = new TextView(parent.getContext());
             conn.setTextColor(colorSecondary);
             conn.setTextSize(12);
             conn.setMaxLines(1);
             conn.setIncludeFontPadding(false);
-            layout.addView(conn, new LinearLayout.LayoutParams((int) (80 * density), android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            layout.addView(conn, new LinearLayout.LayoutParams(connWidth, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             TextView status = new TextView(parent.getContext());
             status.setTextColor(colorSecondary);
             status.setTextSize(12);
             status.setMaxLines(1);
             status.setIncludeFontPadding(false);
-            layout.addView(status, new LinearLayout.LayoutParams((int) (90 * density), android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            layout.addView(status, new LinearLayout.LayoutParams(statusWidth, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             TextView startTime = new TextView(parent.getContext());
             startTime.setTextColor(colorSecondary);
             startTime.setTextSize(12);
             startTime.setMaxLines(1);
             startTime.setEllipsize(TextUtils.TruncateAt.END);
             startTime.setIncludeFontPadding(false);
-            layout.addView(startTime, new LinearLayout.LayoutParams((int) (180 * density), android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+            layout.addView(startTime, new LinearLayout.LayoutParams(startWidth, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
             return new ProcessViewHolder(layout, pid, name, cpu, mem, conn, status, startTime);
         }
         @Override
@@ -890,8 +1179,8 @@ public class HostDetailActivity extends AppCompatActivity {
             ProcessInfo info = processItems.get(position);
             holder.pid.setText(String.valueOf(info.pid));
             holder.name.setText(info.name);
-            holder.cpu.setText(String.format("%.1f%%", info.cpu));
-            holder.mem.setText(String.format("%.1f%%", info.mem));
+            holder.cpu.setText(String.format(Locale.getDefault(), "%.1f%%", info.cpu));
+            holder.mem.setText(String.format(Locale.getDefault(), "%.1f%%", info.mem));
             holder.conn.setText(String.valueOf(info.conn));
             holder.status.setText(formatStatus(info.status));
             holder.startTime.setText(info.startTime);
@@ -924,12 +1213,84 @@ public class HostDetailActivity extends AppCompatActivity {
 
     private void sortProcessItems() {
         if (processSortMode == 1) {
-            Collections.sort(processItems, (a, b) -> Float.compare(b.mem, a.mem));
+            Collections.sort(allProcessItems, (a, b) -> Float.compare(b.mem, a.mem));
         } else if (processSortMode == 2) {
-            Collections.sort(processItems, (a, b) -> Integer.compare(b.conn, a.conn));
+            Collections.sort(allProcessItems, (a, b) -> Integer.compare(b.conn, a.conn));
         } else {
-            Collections.sort(processItems, (a, b) -> Float.compare(b.cpu, a.cpu));
+            Collections.sort(allProcessItems, (a, b) -> Float.compare(b.cpu, a.cpu));
         }
+    }
+
+    private void refreshProcessList() {
+        sortProcessItems();
+        processItems.clear();
+        if (!allProcessItems.isEmpty()) {
+            int end = Math.min(monitorProcessLimit, allProcessItems.size());
+            processItems.addAll(allProcessItems.subList(0, end));
+        }
+        if (processAdapter != null) {
+            processAdapter.notifyDataSetChanged();
+        }
+        updateSortHeaderUi();
+        updateProcessMeta();
+    }
+
+    private void updateSortHeaderUi() {
+        int activeColor = MaterialColors.getColor(this, com.google.android.material.R.attr.colorPrimary, Color.parseColor("#4A90E2"));
+        int normalColor = MaterialColors.getColor(this, com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY);
+        if (tvSortCpu != null) {
+            tvSortCpu.setText(getString(R.string.monitor_process_cpu));
+            tvSortCpu.setTextColor(processSortMode == 0 ? activeColor : normalColor);
+        }
+        if (tvSortMem != null) {
+            tvSortMem.setText(getString(R.string.monitor_process_mem));
+            tvSortMem.setTextColor(processSortMode == 1 ? activeColor : normalColor);
+        }
+        if (tvSortConn != null) {
+            tvSortConn.setText(getString(R.string.monitor_process_conn));
+            tvSortConn.setTextColor(processSortMode == 2 ? activeColor : normalColor);
+        }
+    }
+
+    private void updateProcessMeta() {
+        if (tvProcessMeta == null) {
+            return;
+        }
+        int visible = processItems.size();
+        int total = Math.max(processTotalCount, visible);
+        tvProcessMeta.setText(getString(R.string.monitor_process_meta_fmt, visible, total));
+    }
+
+    private void updateMonitorUpdated(long timestamp) {
+        if (tvMonitorUpdated == null) {
+            return;
+        }
+        String time = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date(timestamp));
+        tvMonitorUpdated.setText(getString(R.string.monitor_last_updated_fmt, time));
+    }
+
+    private String formatSpeed(float bytesPerSec) {
+        if (bytesPerSec >= 1024f * 1024f) {
+            return String.format(Locale.getDefault(), "%.1fMB/s", bytesPerSec / 1024f / 1024f);
+        }
+        if (bytesPerSec >= 1024f) {
+            return String.format(Locale.getDefault(), "%.0fKB/s", bytesPerSec / 1024f);
+        }
+        return String.format(Locale.getDefault(), "%.0fB/s", bytesPerSec);
+    }
+
+    private String formatTraffic(long bytes) {
+        double value = bytes;
+        if (value >= 1024d * 1024d * 1024d) {
+            return String.format(Locale.getDefault(), "%.2fGB", value / 1024d / 1024d / 1024d);
+        }
+        if (value >= 1024d * 1024d) {
+            return String.format(Locale.getDefault(), "%.1fMB", value / 1024d / 1024d);
+        }
+        if (value >= 1024d) {
+            return String.format(Locale.getDefault(), "%.1fKB", value / 1024d);
+        }
+        return String.format(Locale.getDefault(), "%dB", bytes);
     }
 
     private String formatStatus(String raw) {
@@ -978,6 +1339,13 @@ public class HostDetailActivity extends AppCompatActivity {
         super.onStart();
         isMonitoring = true;
         startMonitoring();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        loadMonitorPrefs();
+        applyMonitorSettingsToUi();
     }
 
     @Override

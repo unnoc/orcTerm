@@ -10,7 +10,6 @@ import android.widget.RemoteViewsService;
 import com.orcterm.R;
 import com.orcterm.data.AppDatabase;
 import com.orcterm.data.HostEntity;
-import com.orcterm.ui.TerminalActivity;
 
 import java.util.ArrayList;
 import java.util.List;
