@@ -12,8 +12,10 @@ import com.orcterm.core.transport.Transport;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import com.orcterm.core.transport.HostKeyVerifier;
 
 /**
@@ -38,9 +40,10 @@ public class TerminalSession {
         void onError(String message);
     }
 
-    private Transport transport;
+    private volatile Transport transport;
     private TerminalEmulator emulator;
-    private final ExecutorService executor;
+    private final ExecutorService controlExecutor;
+    private final ExecutorService readExecutor;
     private final ExecutorService writeExecutor;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     
@@ -55,10 +58,11 @@ public class TerminalSession {
     private static final int READ_BATCH_SIZE = 2048;
     
     // 创建带日志功能的自定义线程池
+    private static final AtomicInteger THREAD_COUNTER = new AtomicInteger(1);
     private static final ThreadFactory TERMINAL_THREAD_FACTORY = new ThreadFactory() {
         @Override
         public Thread newThread(Runnable r) {
-            Thread t = new Thread(r, "TerminalSession-Thread");
+            Thread t = new Thread(r, "TerminalSession-" + THREAD_COUNTER.getAndIncrement());
             // 只在首次创建时记录一次日志，避免重复输出
             return t;
         }
@@ -66,10 +70,12 @@ public class TerminalSession {
     
     // 初始化带日志功能的线程池
     {
-        this.executor = Executors.newSingleThreadExecutor(TERMINAL_THREAD_FACTORY);
+        this.controlExecutor = Executors.newSingleThreadExecutor(TERMINAL_THREAD_FACTORY);
+        this.readExecutor = Executors.newSingleThreadExecutor(TERMINAL_THREAD_FACTORY);
         this.writeExecutor = Executors.newSingleThreadExecutor(TERMINAL_THREAD_FACTORY);
     }
     private final AtomicBoolean isConnected = new AtomicBoolean(false);
+    private final AtomicBoolean disconnectNotified = new AtomicBoolean(false);
     
     private final CopyOnWriteArrayList<SessionListener> listeners = new CopyOnWriteArrayList<>();
     private static final String LOG_TAG = "SSH_SESSION";
@@ -95,12 +101,14 @@ public class TerminalSession {
         listeners.clear();
         if (listener != null) {
             listeners.add(listener);
+            flushPendingDataIfNeeded();
         }
     }
 
     public void addListener(SessionListener listener) {
         if (listener != null) {
             listeners.addIfAbsent(listener);
+            flushPendingDataIfNeeded();
         }
     }
 
@@ -131,9 +139,14 @@ public class TerminalSession {
         this.password = pass;
         this.authType = authType;
         this.keyPath = keyPath;
+        disconnectNotified.set(false);
 
         Log.v(LOG_TAG, "connect requested host=" + host + " port=" + port + " user=" + user + " auth=" + authType);
-        executor.execute(this::connectInternal);
+        try {
+            controlExecutor.execute(this::connectInternal);
+        } catch (RejectedExecutionException e) {
+            notifyError("Error: Session is closed");
+        }
     }
     
     // 接管已有 SSH 句柄并启动读取循环
@@ -150,8 +163,9 @@ public class TerminalSession {
         }
         ((SshTransport) transport).attachExistingHandle(handle, 80, 24);
         isConnected.set(true);
+        disconnectNotified.set(false);
         notifyConnected();
-        executor.execute(this::startReading);
+        startReadingAsync();
     }
 
     /**
@@ -164,10 +178,16 @@ public class TerminalSession {
         if (!isConnected.get()) return;
         Transport current = transport;
         if (current == null) return;
-        executor.execute(() -> {
-            Log.v("TerminalSession", "在线程中调整终端大小: " + cols + "x" + rows + ", 线程: " + Thread.currentThread().getName());
-            current.resize(cols, rows);
-        });
+        try {
+            controlExecutor.execute(() -> {
+                Transport active = transport;
+                if (!isConnected.get() || active == null) return;
+                Log.v("TerminalSession", "在线程中调整终端大小: " + cols + "x" + rows + ", 线程: " + Thread.currentThread().getName());
+                active.resize(cols, rows);
+            });
+        } catch (RejectedExecutionException ignored) {
+            // Session already closed.
+        }
     }
 
     public long getHandle() {
@@ -200,16 +220,26 @@ public class TerminalSession {
             Log.i(LOG_TAG, "transport connected");
             
             isConnected.set(true);
+            disconnectNotified.set(false);
             Log.i(LOG_TAG, "state=connected");
             notifyConnected();
             
             // 启动读取循环
-            Log.i(LOG_TAG, "start reading loop");
-            startReading();
+            startReadingAsync();
 
         } catch (Exception e) {
             Log.e(LOG_TAG, "connect error: " + e.getMessage(), e);
             notifyError("Error: " + e.getMessage());
+            disconnect();
+        }
+    }
+
+    private void startReadingAsync() {
+        Log.i(LOG_TAG, "start reading loop");
+        try {
+            readExecutor.execute(this::startReading);
+        } catch (RejectedExecutionException e) {
+            notifyError("Read error: Session is closed");
             disconnect();
         }
     }
@@ -289,15 +319,23 @@ public class TerminalSession {
             Log.w("TerminalSession", "连接未就绪或transport为null，跳过发送");
             return;
         }
-        writeExecutor.execute(() -> {
-            Log.v(LOG_TAG, "write bytes=" + data.length());
-            try {
-                transport.write(data.getBytes());
-            } catch (Exception e) {
-                Log.e(LOG_TAG, "write error: " + e.getMessage(), e);
-                notifyError("Write error: " + e.getMessage());
-            }
-        });
+        try {
+            writeExecutor.execute(() -> {
+                Log.v(LOG_TAG, "write bytes=" + data.length());
+                try {
+                    Transport active = transport;
+                    if (!isConnected.get() || active == null) {
+                        return;
+                    }
+                    active.write(data.getBytes());
+                } catch (Exception e) {
+                    Log.e(LOG_TAG, "write error: " + e.getMessage(), e);
+                    notifyError("Write error: " + e.getMessage());
+                }
+            });
+        } catch (RejectedExecutionException ignored) {
+            // Session already closed.
+        }
     }
     
     /**
@@ -337,10 +375,24 @@ public class TerminalSession {
         Transport current = transport;
         transport = null;
         if (current != null) {
-            current.disconnect();
+            try {
+                current.disconnect();
+            } catch (Exception e) {
+                Log.w(LOG_TAG, "disconnect transport error: " + e.getMessage());
+            }
         }
-        writeExecutor.shutdownNow();
-        notifyDisconnected();
+        shutdownExecutor(writeExecutor);
+        shutdownExecutor(readExecutor);
+        shutdownExecutor(controlExecutor);
+        if (disconnectNotified.compareAndSet(false, true)) {
+            notifyDisconnected();
+        }
+    }
+
+    private void shutdownExecutor(ExecutorService target) {
+        if (!target.isShutdown()) {
+            target.shutdownNow();
+        }
     }
 
     // --- 通知辅助方法 ---
@@ -364,6 +416,9 @@ public class TerminalSession {
     }
 
     private void notifyData(String data) {
+        if (data == null || data.isEmpty()) {
+            return;
+        }
         long now = System.currentTimeMillis();
         if (now - lastFrameTime >= MIN_FRAME_TIME) {
             // 立即发送数据
@@ -372,6 +427,10 @@ public class TerminalSession {
                 if (!listeners.isEmpty()) {
                     for (SessionListener l : listeners) {
                         l.onDataReceived(data);
+                    }
+                } else {
+                    synchronized (pendingData) {
+                        pendingData.append(data);
                     }
                 }
             });
@@ -391,6 +450,8 @@ public class TerminalSession {
                                         for (SessionListener l : listeners) {
                                             l.onDataReceived(batchData);
                                         }
+                                    } else {
+                                        pendingData.append(batchData);
                                     }
                                 }
                                 pendingUpdateScheduled = false;
@@ -399,6 +460,32 @@ public class TerminalSession {
                 }
             }
         }
+    }
+
+    private void flushPendingDataIfNeeded() {
+        if (listeners.isEmpty()) {
+            return;
+        }
+        final String pending;
+        synchronized (pendingData) {
+            if (pendingData.length() == 0) {
+                return;
+            }
+            pending = pendingData.toString();
+            pendingData.setLength(0);
+            pendingUpdateScheduled = false;
+        }
+        mainHandler.post(() -> {
+            if (listeners.isEmpty()) {
+                synchronized (pendingData) {
+                    pendingData.append(pending);
+                }
+                return;
+            }
+            for (SessionListener l : listeners) {
+                l.onDataReceived(pending);
+            }
+        });
     }
 
     private void notifyError(String msg) {

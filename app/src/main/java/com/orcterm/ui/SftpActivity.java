@@ -36,13 +36,14 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.google.android.material.button.MaterialButton;
 import com.orcterm.R;
 import com.orcterm.core.sftp.SftpFile;
+import com.orcterm.core.sftp.SftpRepository;
 import com.orcterm.core.ssh.SshNative;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.session.SessionManager;
 import com.orcterm.core.terminal.TerminalSession;
 import com.orcterm.ui.SftpTransferService;
+import com.orcterm.ui.common.UiStateController;
 import com.orcterm.util.CommandConstants;
-
-import org.json.JSONArray;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -72,6 +73,7 @@ public class SftpActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private SwipeRefreshLayout swipeRefresh;
     private ProgressBar progressBar;
+    private UiStateController uiStateController;
     private FileAdapter adapter;
     private View pathBar;
     private View pathScroll;
@@ -89,6 +91,7 @@ public class SftpActivity extends AppCompatActivity {
     private MaterialButton btnCancelTransfer;
     
     private SshNative sshNative;
+    private SftpRepository sftpRepository;
     private long sshHandle = 0;
     private boolean isSharedSession = false;
     
@@ -114,6 +117,7 @@ public class SftpActivity extends AppCompatActivity {
     private int pendingIndex = 0;
     private int pendingToken = 0;
     private boolean isAppendingPage = false;
+    private String lastRequestedPath = "/root";
 
     private android.view.ActionMode actionMode;
     private BroadcastReceiver transferReceiver;
@@ -267,6 +271,8 @@ public class SftpActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recycler_files);
         swipeRefresh = findViewById(R.id.swipe_refresh);
         progressBar = findViewById(R.id.progress_bar);
+        uiStateController = new UiStateController(this);
+        uiStateController.setRetryAction(() -> loadFiles(lastRequestedPath));
         pathBar = findViewById(R.id.path_bar);
         pathScroll = findViewById(R.id.path_scroll);
         pathSegments = findViewById(R.id.path_segments);
@@ -356,6 +362,7 @@ public class SftpActivity extends AppCompatActivity {
         keyPath = getIntent().getStringExtra("key_path");
 
         sshNative = new SshNative();
+        sftpRepository = new SftpRepository(sshNative);
         
         long sessionId = getIntent().getLongExtra("session_id", -1);
         if (sessionId != -1) {
@@ -1346,37 +1353,30 @@ public class SftpActivity extends AppCompatActivity {
 
     private void ensureConnected() throws Exception {
         if (sshHandle == 0) {
-            TerminalSession session = SessionManager.getInstance().findConnectedSession(hostname, port, username);
-            if (session != null) {
-                long handle = session.getHandle();
-                if (handle != 0) {
-                    sshHandle = handle;
-                    isSharedSession = true;
-                    return;
-                }
-            }
-            sshHandle = sshNative.connect(hostname, port);
-            if (sshHandle == 0) throw new Exception(getString(R.string.err_connect_fail));
-            
-            int ret;
-            if (authType == 1 && keyPath != null) {
-                ret = sshNative.authKey(sshHandle, username, keyPath);
-            } else {
-                ret = sshNative.authPassword(sshHandle, username, password);
-            }
-            
-            if (ret != 0) {
-                throw new Exception(getString(R.string.err_auth_fail));
-            }
+            SessionConnector.Connection connection = SessionConnector.acquire(
+                    sshNative,
+                    hostname,
+                    port,
+                    username,
+                    password,
+                    authType,
+                    keyPath,
+                    getString(R.string.err_connect_fail),
+                    getString(R.string.err_auth_fail)
+            );
+            sshHandle = connection.getHandle();
+            isSharedSession = connection.isShared();
         }
     }
     
-    private boolean isValidSftpResponse(String response) {
-        return response != null && response.trim().startsWith("[");
-    }
-
     private void loadFiles(String path) {
-        if (!swipeRefresh.isRefreshing()) progressBar.setVisibility(View.VISIBLE);
+        final String targetPath = (path == null || path.trim().isEmpty()) ? "/" : path;
+        boolean isPullRefresh = swipeRefresh != null && swipeRefresh.isRefreshing();
+        lastRequestedPath = targetPath;
+        if (!isPullRefresh) {
+            progressBar.setVisibility(View.VISIBLE);
+            uiStateController.showLoading(getString(R.string.sftp_state_loading_message));
+        }
         int token = loadSequence.incrementAndGet();
         activeLoadToken = token;
         
@@ -1384,39 +1384,31 @@ public class SftpActivity extends AppCompatActivity {
             try {
                 ensureConnected();
                 
-                String response = sshNative.sftpList(sshHandle, path);
-                if (!isValidSftpResponse(response) && isSharedSession) {
+                String response = sftpRepository.fetchListResponse(sshHandle, targetPath);
+                if (!sftpRepository.isValidListResponse(response) && isSharedSession) {
                     isSharedSession = false;
                     sshHandle = 0;
                     ensureConnected();
-                    response = sshNative.sftpList(sshHandle, path);
+                    response = sftpRepository.fetchListResponse(sshHandle, targetPath);
                 }
-                if (!isValidSftpResponse(response)) {
+                if (!sftpRepository.isValidListResponse(response)) {
                     throw new Exception("SFTP list failed");
                 }
                 
                 List<SftpFile> list = new ArrayList<>();
-                if (response != null && !response.isEmpty()) {
-                    try {
-                        JSONArray array = new JSONArray(response);
-                        for (int i = 0; i < array.length(); i++) {
-                            SftpFile file = SftpFile.fromJson(array.getJSONObject(i));
-                            // Filter hidden files
-                            if (!showHidden && file.name.startsWith(".") && !file.name.equals("..")) {
-                                continue;
-                            }
-                            list.add(file);
-                        }
-                    } catch (Exception e) {
-                        // Ignore parse error or empty list
+                for (SftpFile file : sftpRepository.parseList(response)) {
+                    // Filter hidden files
+                    if (!showHidden && file.name.startsWith(".") && !file.name.equals("..")) {
+                        continue;
                     }
+                    list.add(file);
                 }
                 
                 // Sort
                 Collections.sort(list, (o1, o2) -> {
                     // 1. Pinned
-                    String p1Path = (path.endsWith("/") ? path : path + "/") + o1.name;
-                    String p2Path = (path.endsWith("/") ? path : path + "/") + o2.name;
+                    String p1Path = (targetPath.endsWith("/") ? targetPath : targetPath + "/") + o1.name;
+                    String p2Path = (targetPath.endsWith("/") ? targetPath : targetPath + "/") + o2.name;
                     boolean p1 = pinnedFiles.contains(p1Path);
                     boolean p2 = pinnedFiles.contains(p2Path);
                     if (p1 && !p2) return -1;
@@ -1441,7 +1433,7 @@ public class SftpActivity extends AppCompatActivity {
                     if (token != activeLoadToken) return;
                     progressBar.setVisibility(View.GONE);
                     swipeRefresh.setRefreshing(false);
-                    currentPath = path;
+                    currentPath = targetPath;
                     getSupportActionBar().setSubtitle(currentPath);
                     updatePathSegments();
                     if (list.size() <= LIST_PAGE_SIZE) {
@@ -1455,6 +1447,11 @@ public class SftpActivity extends AppCompatActivity {
                         pendingToken = token;
                         isAppendingPage = false;
                     }
+                    if (list.isEmpty()) {
+                        uiStateController.showEmpty(getString(R.string.sftp_state_empty_message, targetPath));
+                    } else {
+                        uiStateController.showContent();
+                    }
                 });
                 
             } catch (Exception e) {
@@ -1462,6 +1459,7 @@ public class SftpActivity extends AppCompatActivity {
                     if (token != activeLoadToken) return;
                     progressBar.setVisibility(View.GONE);
                     swipeRefresh.setRefreshing(false);
+                    uiStateController.showError(e.getMessage());
                     Toast.makeText(SftpActivity.this, String.format(getString(R.string.msg_error), e.getMessage()), Toast.LENGTH_SHORT).show();
                 });
             }

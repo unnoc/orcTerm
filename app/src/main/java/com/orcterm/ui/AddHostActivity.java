@@ -27,7 +27,9 @@ import androidx.lifecycle.ViewModelProvider;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
+import com.orcterm.core.session.HostKeyVerifier;
 import com.orcterm.R;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.data.HostEntity;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.util.CommandConstants;
@@ -88,7 +90,6 @@ public class AddHostActivity extends AppCompatActivity {
     private boolean hostKeyConfirmed = false;
     private String lastHostKeyType = "-";
     private String lastHostKeyFingerprint = "-";
-    private int lastHostKeyCheck = -1;
     private boolean suppressChangeEvents = false;
     private String initialHostname;
     private int initialPort;
@@ -422,65 +423,63 @@ public class AddHostActivity extends AppCompatActivity {
             SshNative ssh = new SshNative();
             long handle = 0;
             try {
-                handle = ssh.connect(hostname, port);
-                if (handle == 0) {
-                    postFailure("网络不可达或握手失败");
-                    return;
-                }
+                handle = SessionConnector.connectOnly(ssh, hostname, port, "网络不可达或握手失败");
 
                 ssh.setSessionTimeout(handle, Math.max(1, timeoutSec) * 1000);
                 ssh.setSessionReadTimeout(handle, 60);
                 ssh.setKeepaliveConfig(handle, true, Math.max(0, keepaliveSec));
 
-                String hostKeyInfo = ssh.getHostKeyInfo(handle);
-                parseHostKeyInfo(hostKeyInfo);
+                HostKeyVerifier.HostKeyInfo hostKeyInfo = HostKeyVerifier.parseHostKeyInfo(ssh.getHostKeyInfo(handle));
+                lastHostKeyType = hostKeyInfo.getKeyType();
+                lastHostKeyFingerprint = hostKeyInfo.getFingerprint();
 
                 String knownHostsPath = ensureKnownHostsPath();
-                lastHostKeyCheck = ssh.knownHostsCheck(handle, hostname, port, knownHostsPath);
-
-                if (lastHostKeyCheck == 1 || lastHostKeyCheck == 2) {
-                    if (currentHostKeyPolicy == 0) {
-                        postFailure(lastHostKeyCheck == 1 ? "Host Key 不匹配" : "Host Key 未知");
-                        return;
-                    }
-                    runOnUiThread(() -> updateSecurityStatus(lastHostKeyCheck == 1 ? "Host Key 发生变化" : "首次连接需要确认", 0xFFFFA000));
-                    CountDownLatch latch = new CountDownLatch(1);
-                    AtomicInteger decision = new AtomicInteger(0);
-                    runOnUiThread(() -> showHostKeyConfirmDialog(hostname, port, username, lastHostKeyType, lastHostKeyFingerprint, lastHostKeyCheck, decision, latch));
-                    latch.await();
-                    if (decision.get() == -1) {
-                        postFailure("已拒绝连接");
-                        return;
-                    }
-                    if (decision.get() == 1) {
-                        int addRc = ssh.knownHostsAdd(handle, hostname, port, knownHostsPath, "orcterm");
-                        if (addRc != 0) {
-                            postFailure("写入 known_hosts 失败");
-                            return;
+                HostKeyVerifier.VerifyResult verifyResult = HostKeyVerifier.verify(
+                        ssh,
+                        handle,
+                        hostname,
+                        port,
+                        username,
+                        knownHostsPath,
+                        currentHostKeyPolicy,
+                        hostKeyInfo,
+                        challenge -> {
+                            runOnUiThread(() -> updateSecurityStatus(
+                                    challenge.getReason() == HostKeyVerifier.CHECK_CHANGED ? "Host Key 发生变化" : "首次连接需要确认",
+                                    0xFFFFA000
+                            ));
+                            CountDownLatch latch = new CountDownLatch(1);
+                            AtomicInteger decision = new AtomicInteger(0);
+                            runOnUiThread(() -> showHostKeyConfirmDialog(
+                                    challenge.getHostname(),
+                                    challenge.getPort(),
+                                    challenge.getUsername(),
+                                    challenge.getKeyType(),
+                                    challenge.getFingerprint(),
+                                    challenge.getReason(),
+                                    decision,
+                                    latch
+                            ));
+                            latch.await();
+                            return decision.get();
                         }
-                    }
-                    hostKeyConfirmed = true;
-                } else if (lastHostKeyCheck == 0) {
-                    hostKeyConfirmed = true;
-                } else {
-                    postFailure("Host Key 校验失败");
-                    return;
-                }
+                );
+                hostKeyConfirmed = verifyResult.isTrusted();
 
-                int auth;
-                if (currentAuthType == 1 && !TextUtils.isEmpty(keyPath)) {
-                    auth = ssh.authKey(handle, username, keyPath);
-                } else {
-                    auth = ssh.authPassword(handle, username, password);
-                }
-                if (auth != 0) {
-                    postFailure("认证失败");
-                    return;
-                }
+                SessionConnector.authenticate(
+                        ssh,
+                        handle,
+                        username,
+                        password,
+                        currentAuthType,
+                        keyPath,
+                        "认证失败"
+                );
 
                 postSuccess();
             } catch (Exception e) {
-                postFailure("测试异常");
+                String message = e.getMessage();
+                postFailure(TextUtils.isEmpty(message) ? "测试异常" : message);
             } finally {
                 if (handle != 0) {
                     ssh.disconnect(handle);
@@ -647,15 +646,15 @@ public class AddHostActivity extends AppCompatActivity {
             .setTitle("Host Key 安全确认")
             .setView(layout)
             .setPositiveButton("信任并保存", (d, w) -> {
-                decision.set(1);
+                decision.set(HostKeyVerifier.DECISION_TRUST_AND_SAVE);
                 latch.countDown();
             })
             .setNeutralButton("仅本次连接", (d, w) -> {
-                decision.set(2);
+                decision.set(HostKeyVerifier.DECISION_TRUST_ONCE);
                 latch.countDown();
             })
             .setNegativeButton("拒绝连接", (d, w) -> {
-                decision.set(-1);
+                decision.set(HostKeyVerifier.DECISION_REJECT);
                 latch.countDown();
             })
             .setCancelable(false)
@@ -663,22 +662,6 @@ public class AddHostActivity extends AppCompatActivity {
 
         dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.parseColor("#F44336")));
         dialog.show();
-    }
-
-    private void parseHostKeyInfo(String info) {
-        if (info == null || info.isEmpty()) {
-            lastHostKeyType = "-";
-            lastHostKeyFingerprint = "-";
-            return;
-        }
-        String[] parts = info.split("\\|");
-        if (parts.length >= 2) {
-            lastHostKeyType = parts[0];
-            lastHostKeyFingerprint = parts[1];
-        } else {
-            lastHostKeyType = info;
-            lastHostKeyFingerprint = "-";
-        }
     }
 
     private void toggleAdvanced() {
@@ -773,15 +756,18 @@ public class AddHostActivity extends AppCompatActivity {
             SshNative ssh = new SshNative();
             long handle = 0;
             try {
-                handle = ssh.connect(host.hostname, host.port);
-                if (handle == 0) return;
-                int auth;
-                if (host.authType == 1 && host.keyPath != null) {
-                    auth = ssh.authKey(handle, host.username, host.keyPath);
-                } else {
-                    auth = ssh.authPassword(handle, host.username, host.password);
-                }
-                if (auth != 0) return;
+                SessionConnector.Connection connection = SessionConnector.connectFresh(
+                        ssh,
+                        host.hostname,
+                        host.port,
+                        host.username,
+                        host.password,
+                        host.authType,
+                        host.keyPath,
+                        "Connect failed",
+                        "Auth failed"
+                );
+                handle = connection.getHandle();
                 String mac = ssh.exec(handle, CommandConstants.CMD_MAC_FROM_IP_LINK).trim();
                 if (mac.isEmpty()) {
                     mac = ssh.exec(handle, CommandConstants.CMD_MAC_FROM_SYS_CLASS).trim();

@@ -12,6 +12,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -1150,6 +1151,7 @@ public class TerminalActivity extends AppCompatActivity {
         container.id = id;
         container.name = name;
         container.group = group;
+        container.pendingOutput = new StringBuilder();
         container.inputBuffer = new StringBuilder();
         container.commandHistory = new ArrayList<>();
 
@@ -1157,10 +1159,25 @@ public class TerminalActivity extends AppCompatActivity {
         ConnectionParams resolved = params != null ? params : buildParamsFromCurrent();
         TerminalSession session = SessionManager.getInstance().getTerminalSession(id);
         boolean isNewSession = (session == null);
+        boolean hasParams = !TextUtils.isEmpty(resolved.host) && !TextUtils.isEmpty(resolved.user);
 
         if (isNewSession) {
-            boolean hasParams = !TextUtils.isEmpty(resolved.host) && !TextUtils.isEmpty(resolved.user);
-            if (hasParams) {
+            long sharedHandle = hasParams ? SessionManager.getInstance().getAndRemoveSharedHandle(id) : 0;
+            if (sharedHandle != 0 && hasParams) {
+                try {
+                    session = new TerminalSession();
+                    session.setHostKeyVerifier(createHostKeyVerifier());
+                    session.attachExistingSshHandle(sharedHandle, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
+                    if (sessionLoggingEnabled) {
+                        startSessionLogging(resolved.host, resolved.port, resolved.user);
+                        logSessionEvent("接管连接", resolved.host, resolved.port, resolved.user);
+                    }
+                } catch (Exception e) {
+                    Log.w("TerminalActivity", "接管共享会话失败，转为新连接: " + e.getMessage());
+                    session = null;
+                }
+            }
+            if (session == null && hasParams) {
                 session = new TerminalSession();
                 session.setHostKeyVerifier(createHostKeyVerifier());
                 if (sessionLoggingEnabled) {
@@ -1168,8 +1185,10 @@ public class TerminalActivity extends AppCompatActivity {
                     logSessionEvent("连接中", resolved.host, resolved.port, resolved.user);
                 }
                 session.connect(resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath);
+            }
+            if (session != null && hasParams) {
                 SessionManager.getInstance().upsertSession(
-                    new SessionInfo(container.id, container.name, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath, false),
+                    new SessionInfo(container.id, container.name, resolved.host, resolved.port, resolved.user, resolved.password, resolved.authType, resolved.keyPath, session.isConnected()),
                     session
                 );
             }
@@ -1203,6 +1222,7 @@ public class TerminalActivity extends AppCompatActivity {
             ContainerSessionListener listener = new ContainerSessionListener(container);
             session.addListener(listener);
             container.sessionListener = listener;
+            container.connected = session.isConnected();
         }
         container.session = session;
 
@@ -1312,6 +1332,7 @@ public class TerminalActivity extends AppCompatActivity {
         view.setVisibility(View.GONE);
         container.view = view;
         containerHost.addView(view);
+        flushPendingContainerOutput(container);
 
         containers.add(container);
         if (id >= nextContainerId) {
@@ -1627,8 +1648,8 @@ public class TerminalActivity extends AppCompatActivity {
         }
         String send = normalizeLineEnding(text);
         recordInputHistory(container, send);
-        if (localEcho && container.view != null) {
-            container.view.append(send);
+        if (localEcho) {
+            appendContainerOutput(container, send);
         }
         if (container.session != null) {
             container.session.write(send);
@@ -2299,6 +2320,7 @@ public class TerminalActivity extends AppCompatActivity {
         TerminalSession.SessionListener sessionListener;
         TerminalEmulator emulator;
         TerminalView view;
+        StringBuilder pendingOutput;
         StringBuilder inputBuffer;
         List<CommandEntry> commandHistory;
     }
@@ -2313,6 +2335,29 @@ public class TerminalActivity extends AppCompatActivity {
         }
     }
 
+    private void appendContainerOutput(TerminalContainer container, String data) {
+        if (container == null || TextUtils.isEmpty(data)) {
+            return;
+        }
+        if (container.view != null) {
+            flushPendingContainerOutput(container);
+            container.view.append(data);
+            return;
+        }
+        if (container.pendingOutput == null) {
+            container.pendingOutput = new StringBuilder();
+        }
+        container.pendingOutput.append(data);
+    }
+
+    private void flushPendingContainerOutput(TerminalContainer container) {
+        if (container == null || container.view == null || container.pendingOutput == null || container.pendingOutput.length() == 0) {
+            return;
+        }
+        container.view.append(container.pendingOutput.toString());
+        container.pendingOutput.setLength(0);
+    }
+
     private class ContainerSessionListener implements TerminalSession.SessionListener {
         private final TerminalContainer container;
 
@@ -2325,7 +2370,7 @@ public class TerminalActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 container.connected = true;
                 SessionManager.getInstance().updateSession(container.id, true);
-                container.view.append("Connected.\r\n");
+                appendContainerOutput(container, "Connected.\r\n");
             containerAdapter.notifyDataSetChanged();
             updatePersistentNotification();
             
@@ -2348,7 +2393,7 @@ public class TerminalActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 container.connected = false;
                 SessionManager.getInstance().updateSession(container.id, false);
-                container.view.append("Disconnected.\r\n");
+                appendContainerOutput(container, "Disconnected.\r\n");
             containerAdapter.notifyDataSetChanged();
             updatePersistentNotification();
             
@@ -2365,9 +2410,7 @@ public class TerminalActivity extends AppCompatActivity {
 
     @Override
     public void onDataReceived(String data) {
-        if (container.view != null) {
-            container.view.append(data);
-        }
+        appendContainerOutput(container, data);
         
         // 记录会话输出到日志
         if (sessionLoggingEnabled) {
@@ -2380,7 +2423,7 @@ public class TerminalActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             container.connected = false;
             SessionManager.getInstance().updateSession(container.id, false);
-            container.view.append("Error: " + message + "\r\n");
+            appendContainerOutput(container, "Error: " + message + "\r\n");
             containerAdapter.notifyDataSetChanged();
         });
         if (sessionLoggingEnabled) {
@@ -2715,9 +2758,7 @@ public class TerminalActivity extends AppCompatActivity {
                     new SessionInfo(c.id, c.name, params.host, params.port, params.user, params.password, params.authType, params.keyPath, false),
                     session
                 );
-                if (c.view != null) {
-                    c.view.append("Reconnecting...\r\n");
-                }
+                appendContainerOutput(c, "Reconnecting...\r\n");
             }
             containerAdapter.notifyDataSetChanged();
         } catch (Exception e) {
@@ -2729,9 +2770,7 @@ public class TerminalActivity extends AppCompatActivity {
         if (container.session != null) {
             container.session.disconnect();
             container.connected = false;
-            if (container.view != null) {
-                container.view.append("Disconnected by user.\r\n");
-            }
+            appendContainerOutput(container, "Disconnected by user.\r\n");
             containerAdapter.notifyDataSetChanged();
         }
     }

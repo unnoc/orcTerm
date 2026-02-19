@@ -314,9 +314,7 @@ public class TerminalEmulator {
         }
         if (cursorY < rows && cursorX < columns) {
             charBuffer[cursorY][cursorX] = c;
-            int encodedForeColor = encodeColor(currentForeColor, currentBackColor, currentForeColorMode, currentBackColorMode, 
-                                                currentRGBForeColor, currentRGBBackColor);
-            styleBuffer[cursorY][cursorX] = encodeStyle(encodedForeColor, isBold, isUnderline, isInverse);
+            styleBuffer[cursorY][cursorX] = encodeStyle(currentForeColor, currentBackColor, isBold, isUnderline, isInverse);
             dirtyRegion.update(cursorX, cursorY);
             cursorX++;
         }
@@ -637,14 +635,14 @@ public class TerminalEmulator {
                         int r = Math.max(0, Math.min(255, args.get(i + 2)));
                         int g = Math.max(0, Math.min(255, args.get(i + 3)));
                         int b = Math.max(0, Math.min(255, args.get(i + 4)));
-                        int rgbColor = 0xFF000000 | (r << 16) | (g << 8) | b;
+                        int colorIndex = mapRgbToAnsi256(r, g, b);
                         
                         if (code == 38) {
-                            currentRGBForeColor = rgbColor;
-                            currentForeColorMode = COLOR_MODE_RGB;
+                            currentForeColor = colorIndex;
+                            currentForeColorMode = COLOR_MODE_256;
                         } else {
-                            currentRGBBackColor = rgbColor;
-                            currentBackColorMode = COLOR_MODE_RGB;
+                            currentBackColor = colorIndex;
+                            currentBackColorMode = COLOR_MODE_256;
                         }
                         i += 4;
                     }
@@ -666,22 +664,20 @@ public class TerminalEmulator {
 
     private int map256Color(int color) {
         if (color < 0) return 7;
-        if (color < 16) return color;
-        if (color < 232) {
-            int index = color - 16;
-            int r = (index / 36) % 6;
-            int g = (index / 6) % 6;
-            int b = index % 6;
-            int red = r == 0 ? 0 : r * 40 + 55;
-            int green = g == 0 ? 0 : g * 40 + 55;
-            int blue = b == 0 ? 0 : b * 40 + 55;
-            return (0xFF << 24) | (red << 16) | (green << 8) | blue;
+        if (color > 255) return 255;
+        return color;
+    }
+
+    private int mapRgbToAnsi256(int r, int g, int b) {
+        if (r == g && g == b) {
+            if (r < 8) return 16;
+            if (r > 248) return 231;
+            return 232 + ((r - 8) / 10);
         }
-        if (color < 256) {
-            int gray = (color - 232) * 10 + 8;
-            return (0xFF << 24) | (gray << 16) | (gray << 8) | gray;
-        }
-        return 7;
+        int rr = (int) Math.round(r / 255.0 * 5);
+        int gg = (int) Math.round(g / 255.0 * 5);
+        int bb = (int) Math.round(b / 255.0 * 5);
+        return 16 + 36 * rr + 6 * gg + bb;
     }
 
     private void resetTerminal() {

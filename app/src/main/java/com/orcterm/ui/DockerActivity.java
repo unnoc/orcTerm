@@ -22,14 +22,12 @@ import com.orcterm.R;
 import com.orcterm.core.docker.DockerContainer;
 import com.orcterm.core.docker.DockerImage;
 import com.orcterm.core.docker.DockerNetwork;
+import com.orcterm.core.docker.DockerRepository;
 import com.orcterm.core.docker.DockerVolume;
-import com.orcterm.core.session.SessionManager;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.ssh.SshNative;
-import com.orcterm.core.terminal.TerminalSession;
+import com.orcterm.ui.common.UiStateController;
 import com.orcterm.util.CommandConstants;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -61,12 +59,15 @@ public class DockerActivity extends AppCompatActivity {
     private TextView tvTotalImages;
     private TextView tvDockerVersion;
     private TextView tvEmptyHint;
+    private UiStateController uiStateController;
     private TabLayout tabLayout;
+    private String currentTab = "概览";
 
     private DockerAdapter containerAdapter;
     private DockerImageAdapter imageAdapter;
     private DockerNetworkAdapter networkAdapter;
     private DockerVolumeAdapter volumeAdapter;
+    private DockerRepository dockerRepository;
     
     private SshNative sshNative;
     private long sshHandle = 0;
@@ -112,6 +113,8 @@ public class DockerActivity extends AppCompatActivity {
         tvTotalImages = findViewById(R.id.tv_total_images);
         tvDockerVersion = findViewById(R.id.tv_docker_version);
         tvEmptyHint = findViewById(R.id.tv_empty_hint);
+        uiStateController = new UiStateController(this);
+        uiStateController.setRetryAction(this::retryCurrentTab);
         
         setupRecyclers();
         setupTabs();
@@ -120,22 +123,46 @@ public class DockerActivity extends AppCompatActivity {
         getIntentData();
 
         sshNative = new SshNative();
+        dockerRepository = new DockerRepository(sshNative);
         
         executor.execute(() -> {
             try {
-                connectSsh();
+                ensureConnected();
                 fetchDockerVersion();
-                fetchContainers();
-                // Other fetches...
             } catch (Exception e) {
-                mainHandler.post(() -> Snackbar.make(findViewById(R.id.coordinator_layout), "Connect failed: " + e.getMessage(), Snackbar.LENGTH_SHORT).show());
+                mainHandler.post(() -> uiStateController.showError(e.getMessage()));
             }
         });
     }
 
+    private void retryCurrentTab() {
+        switch (currentTab) {
+            case "容器":
+                uiStateController.showLoading(getString(R.string.ui_state_loading_message));
+                loadContainers();
+                break;
+            case "镜像":
+                uiStateController.showLoading(getString(R.string.ui_state_loading_message));
+                loadImages();
+                break;
+            case "网络":
+                uiStateController.showLoading(getString(R.string.ui_state_loading_message));
+                loadNetworks();
+                break;
+            case "存储卷":
+                uiStateController.showLoading(getString(R.string.ui_state_loading_message));
+                loadVolumes();
+                break;
+            default:
+                uiStateController.showContent();
+                loadOverviewData();
+                break;
+        }
+    }
+
     private void fetchDockerVersion() {
         if (sshHandle == 0) return;
-        String version = getDockerVersionString();
+        String version = dockerRepository.fetchVersion(sshHandle, containerEngine);
         dockerVersion = version;
         final String finalVer = dockerVersion;
         mainHandler.post(() -> {
@@ -146,15 +173,6 @@ public class DockerActivity extends AppCompatActivity {
                 tvDockerVersion.setText(finalVer);
             }
         });
-    }
-
-    private String getDockerVersionString() {
-        if (sshHandle == 0) return "";
-        String version = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_VERSION_FORMAT)).trim();
-        if (version.isEmpty() || version.contains("Error")) {
-            version = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_VERSION_FALLBACK)).trim();
-        }
-        return version == null ? "" : version;
     }
         
     private void setupRecyclers() {
@@ -298,24 +316,21 @@ public class DockerActivity extends AppCompatActivity {
         }
     }
     
-    private String getContainerCommand(String args) {
-        String engine = CommandConstants.CMD_ENGINE_PODMAN.equalsIgnoreCase(containerEngine)
-            ? CommandConstants.CMD_ENGINE_PODMAN
-            : CommandConstants.CMD_ENGINE_DOCKER;
-        return engine + " " + args;
-    }
-    
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        stopStatsTimer();
-        if (sshHandle != 0) {
-            if (!isSharedSession) {
-                final long handle = sshHandle;
-                new Thread(() -> sshNative.disconnect(handle)).start();
-            }
-        }
+        releaseSsh();
         executor.shutdownNow();
+    }
+
+    private void releaseSsh() {
+        final long handle = sshHandle;
+        final boolean shared = isSharedSession;
+        sshHandle = 0;
+        isSharedSession = false;
+        if (handle != 0 && !shared) {
+            new Thread(() -> sshNative.disconnect(handle)).start();
+        }
     }
 
     private void showActionMenu(DockerContainer container, View anchor) {
@@ -343,21 +358,7 @@ public class DockerActivity extends AppCompatActivity {
     }
     
     private void performDockerAction(DockerContainer container, String action) {
-        setProgressVisible(true);
-        executor.execute(() -> {
-            try {
-                ensureConnected();
-                String cmd = getContainerCommand(action + " " + container.id);
-                sshNative.exec(sshHandle, cmd);
-                // Refresh list
-                mainHandler.post(this::loadContainers);
-            } catch (Exception e) {
-                mainHandler.post(() -> {
-                    setProgressVisible(false);
-                    Snackbar.make(findViewById(R.id.coordinator_layout), "操作失败: " + e.getMessage(), Snackbar.LENGTH_SHORT).show();
-                });
-            }
-        });
+        performSimpleDockerAction(action, container.id, this::loadContainers);
     }
     
     private void openDetail(DockerContainer container) {
@@ -400,6 +401,7 @@ public class DockerActivity extends AppCompatActivity {
     private void ensureConnected() throws Exception {
         if (sshNative == null) {
             sshNative = new SshNative();
+            dockerRepository = new DockerRepository(sshNative);
         }
         if (hostname == null || hostname.trim().isEmpty()) {
             throw new Exception("Host is empty");
@@ -408,44 +410,27 @@ public class DockerActivity extends AppCompatActivity {
             throw new Exception("User is empty");
         }
         if (sshHandle == 0) {
-            TerminalSession session = SessionManager.getInstance().findConnectedSession(hostname, port, username);
-            if (session != null) {
-                long handle = session.getHandle();
-                if (handle != 0) {
-                    sshHandle = handle;
-                    isSharedSession = true;
-                    return;
-                }
-            }
-            sshHandle = sshNative.connect(hostname, port);
-            if (sshHandle == 0) throw new Exception("Connect failed");
-            
-            int ret;
-            if (authType == 1 && keyPath != null) {
-                ret = sshNative.authKey(sshHandle, username, keyPath);
-            } else {
-                ret = sshNative.authPassword(sshHandle, username, password);
-            }
-            
-            if (ret != 0) {
-                throw new Exception("Auth failed");
-            }
+            SessionConnector.Connection connection = SessionConnector.acquire(
+                    sshNative,
+                    hostname,
+                    port,
+                    username,
+                    password,
+                    authType,
+                    keyPath,
+                    "Connect failed",
+                    "Auth failed"
+            );
+            sshHandle = connection.getHandle();
+            isSharedSession = connection.isShared();
         }
     }
 
     private void loadContainers() {
-        setProgressVisible(true);
-        
         executor.execute(() -> {
             try {
                 ensureConnected();
-                
-                // 3. Exec docker ps
-                String cmd = getContainerCommand(CommandConstants.CMD_CONTAINER_PS_ALL_JSON);
-                String response = sshNative.exec(sshHandle, cmd);
-                
-                // 4. Parse
-                List<DockerContainer> list = parseContainers(response);
+                List<DockerContainer> list = dockerRepository.fetchContainers(sshHandle, containerEngine);
                 
                 synchronized (this) {
                     containerList = list;
@@ -453,41 +438,28 @@ public class DockerActivity extends AppCompatActivity {
 
                 // 6. Update UI
                 mainHandler.post(() -> {
-                    setProgressVisible(false);
                     containerAdapter.setContainers(containerList);
+                    if ("容器".equals(currentTab)) {
+                        if (containerList.isEmpty()) {
+                            uiStateController.showEmpty(getString(R.string.docker_empty_containers));
+                        } else {
+                            uiStateController.showContent();
+                        }
+                    }
                 });
                 
             } catch (Exception e) {
                 mainHandler.post(() -> {
-                    setProgressVisible(false);
-                    Snackbar.make(findViewById(R.id.coordinator_layout), "错误: " + e.getMessage(), Snackbar.LENGTH_LONG).show();
-                });
-            }
-        });
-    }
-
-    private void loadStats() {
-        executor.execute(() -> {
-            try {
-                loadStatsInternal();
-                mainHandler.post(() -> {
-                    // Refresh adapter to show new stats
-                    if (recyclerContainers.getVisibility() == View.VISIBLE) {
-                        containerAdapter.notifyDataSetChanged();
+                    if ("容器".equals(currentTab)) {
+                        uiStateController.showError(e.getMessage());
                     }
                 });
-            } catch (Exception e) {
-                 // ignore
             }
         });
-    }
-
-    private void loadStatsInternal() throws Exception {
-        ensureConnected();
-        // Simply return, stats are no longer displayed on the main docker activity
     }
 
     private void updateViewVisibility(String tabName) {
+        currentTab = tabName;
         recyclerContainers.setVisibility(View.GONE);
         recyclerImages.setVisibility(View.GONE);
         recyclerNetworks.setVisibility(View.GONE);
@@ -495,31 +467,33 @@ public class DockerActivity extends AppCompatActivity {
         if (swipeOverview != null) {
             swipeOverview.setVisibility(View.GONE);
         }
-        
-        stopStatsTimer();
-        
+
         View targetView = null;
 
         switch (tabName) {
             case "概览":
                 targetView = swipeOverview;
+                uiStateController.showContent();
                 loadOverviewData();
                 break;
             case "容器":
                 targetView = recyclerContainers;
+                uiStateController.showLoading(getString(R.string.ui_state_loading_message));
                 loadContainers();
-                startStatsTimer();
                 break;
             case "镜像":
                 targetView = recyclerImages;
+                uiStateController.showLoading(getString(R.string.ui_state_loading_message));
                 loadImages();
                 break;
             case "网络":
                 targetView = recyclerNetworks;
+                uiStateController.showLoading(getString(R.string.ui_state_loading_message));
                 loadNetworks();
                 break;
             case "存储卷":
                 targetView = recyclerVolumes;
+                uiStateController.showLoading(getString(R.string.ui_state_loading_message));
                 loadVolumes();
                 break;
         }
@@ -539,18 +513,16 @@ public class DockerActivity extends AppCompatActivity {
         executor.execute(() -> {
             try {
                 ensureConnected();
-                String version = getDockerVersionString();
-                String containerResponse = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_PS_ALL_JSON));
-                List<DockerContainer> containers = parseContainers(containerResponse);
-                int total = containers.size();
-                int running = (int) containers.stream().filter(c -> "running".equalsIgnoreCase(c.state)).count();
-                int stopped = Math.max(0, total - running);
-                String imageResponse = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_IMAGES_JSON));
-                List<DockerImage> images = parseImages(imageResponse);
-                int imageCount = images.size();
-                dockerVersion = version;
+                DockerRepository.Overview overview = dockerRepository.fetchOverview(sshHandle, containerEngine);
+                dockerVersion = overview.version;
                 mainHandler.post(() -> {
-                    updateOverviewUI(total, running, stopped, imageCount, dockerVersion);
+                    updateOverviewUI(
+                            overview.totalContainers,
+                            overview.runningContainers,
+                            overview.stoppedContainers,
+                            overview.totalImages,
+                            dockerVersion
+                    );
                     if (swipeOverview != null) {
                         swipeOverview.setRefreshing(false);
                     }
@@ -622,9 +594,11 @@ public class DockerActivity extends AppCompatActivity {
         executor.execute(() -> {
             try {
                 ensureConnected();
-                String cmd = getContainerCommand(commandPrefix + " " + targetId);
-                sshNative.exec(sshHandle, cmd);
-                mainHandler.post(onSuccess);
+                dockerRepository.runAction(sshHandle, containerEngine, commandPrefix, targetId);
+                mainHandler.post(() -> {
+                    setProgressVisible(false);
+                    onSuccess.run();
+                });
             } catch (Exception e) {
                 mainHandler.post(() -> {
                     setProgressVisible(false);
@@ -638,76 +612,53 @@ public class DockerActivity extends AppCompatActivity {
         performSimpleDockerAction(action, image.id, () -> loadImages());
     }
 
-    private void loadInfo() {
-        // No-op
-    }
-
     private void loadImages() {
-        setProgressVisible(true);
         executor.execute(() -> {
             try {
                 ensureConnected();
-                // docker images format json
-                String response = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_IMAGES_JSON));
-                List<DockerImage> list = parseImages(response);
+                List<DockerImage> list = dockerRepository.fetchImages(sshHandle, containerEngine);
                 
                 mainHandler.post(() -> {
-                    setProgressVisible(false);
                     imageAdapter.setImages(list);
+                    if ("镜像".equals(currentTab)) {
+                        if (list.isEmpty()) {
+                            uiStateController.showEmpty(getString(R.string.docker_empty_images));
+                        } else {
+                            uiStateController.showContent();
+                        }
+                    }
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
-                    setProgressVisible(false);
-                    Snackbar.make(findViewById(R.id.coordinator_layout), "错误: " + e.getMessage(), Snackbar.LENGTH_LONG).show();
+                    if ("镜像".equals(currentTab)) {
+                        uiStateController.showError(e.getMessage());
+                    }
                 });
             }
         });
     }
 
-    private java.util.Timer statsTimer;
-
-    private void startStatsTimer() {
-        stopStatsTimer();
-        statsTimer = new java.util.Timer();
-        statsTimer.schedule(new java.util.TimerTask() {
-            @Override
-            public void run() {
-                loadStats();
-            }
-        }, 1000, 3000);
-    }
-
-    private void stopStatsTimer() {
-        if (statsTimer != null) {
-            statsTimer.cancel();
-            statsTimer = null;
-        }
-    }
-
     private void loadNetworks() {
-        setProgressVisible(true);
         executor.execute(() -> {
             try {
                 ensureConnected();
-                String response = sshNative.exec(sshHandle, getContainerCommand(CommandConstants.CMD_CONTAINER_NETWORKS_JSON));
-                
-                List<DockerNetwork> list = new ArrayList<>();
-                String[] lines = response.split("\n");
-                for (String line : lines) {
-                    if (line.trim().isEmpty()) continue;
-                    try {
-                        list.add(DockerNetwork.fromJson(new JSONObject(line)));
-                    } catch (Exception e) {}
-                }
+                List<DockerNetwork> list = dockerRepository.fetchNetworks(sshHandle, containerEngine);
                 
                 mainHandler.post(() -> {
-                    setProgressVisible(false);
                     networkAdapter.setNetworks(list);
+                    if ("网络".equals(currentTab)) {
+                        if (list.isEmpty()) {
+                            uiStateController.showEmpty(getString(R.string.docker_empty_networks));
+                        } else {
+                            uiStateController.showContent();
+                        }
+                    }
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
-                    setProgressVisible(false);
-                    Snackbar.make(findViewById(R.id.coordinator_layout), "错误: " + e.getMessage(), Snackbar.LENGTH_LONG).show();
+                    if ("网络".equals(currentTab)) {
+                        uiStateController.showError(e.getMessage());
+                    }
                 });
             }
         });
@@ -717,30 +668,26 @@ public class DockerActivity extends AppCompatActivity {
 
 
     private void loadVolumes() {
-        setProgressVisible(true);
         executor.execute(() -> {
             try {
                 ensureConnected();
-                String cmd = getContainerCommand(CommandConstants.CMD_CONTAINER_VOLUMES_JSON);
-                String response = sshNative.exec(sshHandle, cmd);
-                
-                List<DockerVolume> list = new ArrayList<>();
-                String[] lines = response.split("\n");
-                for (String line : lines) {
-                    if (line.trim().isEmpty()) continue;
-                    try {
-                        list.add(DockerVolume.fromJson(new JSONObject(line)));
-                    } catch (Exception e) {}
-                }
+                List<DockerVolume> list = dockerRepository.fetchVolumes(sshHandle, containerEngine);
                 
                 mainHandler.post(() -> {
-                    setProgressVisible(false);
                     volumeAdapter.setVolumes(list);
+                    if ("存储卷".equals(currentTab)) {
+                        if (list.isEmpty()) {
+                            uiStateController.showEmpty(getString(R.string.docker_empty_volumes));
+                        } else {
+                            uiStateController.showContent();
+                        }
+                    }
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
-                    setProgressVisible(false);
-                    Snackbar.make(findViewById(R.id.coordinator_layout), "错误: " + e.getMessage(), Snackbar.LENGTH_LONG).show();
+                    if ("存储卷".equals(currentTab)) {
+                        uiStateController.showError(e.getMessage());
+                    }
                 });
             }
         });
@@ -753,61 +700,5 @@ public class DockerActivity extends AppCompatActivity {
         } else {
             mainHandler.post(() -> progressBar.setVisibility(visible ? View.VISIBLE : View.GONE));
         }
-    }
-
-    private void connectSsh() throws Exception {
-        ensureConnected();
-    }
-
-    private void fetchContainers() {
-        loadContainers();
-    }
-
-    private List<DockerContainer> parseContainers(String response) {
-        List<DockerContainer> list = new ArrayList<>();
-        if (response == null) return list;
-        String trimmed = response.trim();
-        if (trimmed.isEmpty()) return list;
-        if (trimmed.startsWith("[")) {
-            try {
-                JSONArray array = new JSONArray(trimmed);
-                for (int i = 0; i < array.length(); i++) {
-                    list.add(DockerContainer.fromJson(array.getJSONObject(i)));
-                }
-            } catch (Exception e) {}
-        } else {
-            String[] lines = trimmed.split("\n");
-            for (String line : lines) {
-                if (line.trim().isEmpty()) continue;
-                try {
-                    list.add(DockerContainer.fromJson(new JSONObject(line)));
-                } catch (Exception e) {}
-            }
-        }
-        return list;
-    }
-
-    private List<DockerImage> parseImages(String response) {
-        List<DockerImage> list = new ArrayList<>();
-        if (response == null) return list;
-        String trimmed = response.trim();
-        if (trimmed.isEmpty()) return list;
-        if (trimmed.startsWith("[")) {
-            try {
-                JSONArray array = new JSONArray(trimmed);
-                for (int i = 0; i < array.length(); i++) {
-                    list.add(DockerImage.fromJson(array.getJSONObject(i)));
-                }
-            } catch (Exception e) {}
-        } else {
-            String[] lines = trimmed.split("\n");
-            for (String line : lines) {
-                if (line.trim().isEmpty()) continue;
-                try {
-                    list.add(DockerImage.fromJson(new JSONObject(line)));
-                } catch (Exception e) {}
-            }
-        }
-        return list;
     }
 }

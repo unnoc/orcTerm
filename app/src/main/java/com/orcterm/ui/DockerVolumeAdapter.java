@@ -6,21 +6,22 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.recyclerview.widget.RecyclerView;
+import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.ListAdapter;
 
 import com.orcterm.R;
 import com.orcterm.core.docker.DockerVolume;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 数据卷列表适配器
  */
-public class DockerVolumeAdapter extends RecyclerView.Adapter<DockerVolumeAdapter.ViewHolder> {
+public class DockerVolumeAdapter extends ListAdapter<DockerVolume, DockerVolumeAdapter.ViewHolder> {
 
-    private List<DockerVolume> volumes = new ArrayList<>();
-    private OnVolumeClickListener listener;
+    private final OnVolumeClickListener listener;
 
     public interface OnVolumeClickListener {
         void onVolumeClick(DockerVolume volume);
@@ -28,12 +29,13 @@ public class DockerVolumeAdapter extends RecyclerView.Adapter<DockerVolumeAdapte
     }
 
     public DockerVolumeAdapter(OnVolumeClickListener listener) {
+        super(DIFF_CALLBACK);
         this.listener = listener;
+        setHasStableIds(true);
     }
 
     public void setVolumes(List<DockerVolume> volumes) {
-        this.volumes = volumes;
-        notifyDataSetChanged();
+        submitList(volumes == null ? new ArrayList<>() : new ArrayList<>(volumes));
     }
 
     @NonNull
@@ -45,15 +47,19 @@ public class DockerVolumeAdapter extends RecyclerView.Adapter<DockerVolumeAdapte
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        holder.bind(volumes.get(position), listener);
+        holder.bind(getItem(position), listener);
     }
 
     @Override
-    public int getItemCount() {
-        return volumes.size();
+    public long getItemId(int position) {
+        DockerVolume item = getItem(position);
+        if (item == null || item.name == null) {
+            return position;
+        }
+        return item.name.hashCode();
     }
 
-    static class ViewHolder extends RecyclerView.ViewHolder {
+    static class ViewHolder extends androidx.recyclerview.widget.RecyclerView.ViewHolder {
         TextView name, driver, mount;
 
         public ViewHolder(@NonNull View itemView) {
@@ -68,11 +74,30 @@ public class DockerVolumeAdapter extends RecyclerView.Adapter<DockerVolumeAdapte
             driver.setText(v.driver);
             mount.setText(v.mountpoint);
 
-            itemView.setOnClickListener(view -> listener.onVolumeClick(v));
-            itemView.setOnLongClickListener(view -> {
-                listener.onVolumeLongClick(v, view);
-                return true;
-            });
+            if (listener != null) {
+                itemView.setOnClickListener(view -> listener.onVolumeClick(v));
+                itemView.setOnLongClickListener(view -> {
+                    listener.onVolumeLongClick(v, view);
+                    return true;
+                });
+            } else {
+                itemView.setOnClickListener(null);
+                itemView.setOnLongClickListener(null);
+            }
         }
     }
+
+    private static final DiffUtil.ItemCallback<DockerVolume> DIFF_CALLBACK = new DiffUtil.ItemCallback<DockerVolume>() {
+        @Override
+        public boolean areItemsTheSame(@NonNull DockerVolume oldItem, @NonNull DockerVolume newItem) {
+            return Objects.equals(oldItem.name, newItem.name);
+        }
+
+        @Override
+        public boolean areContentsTheSame(@NonNull DockerVolume oldItem, @NonNull DockerVolume newItem) {
+            return Objects.equals(oldItem.name, newItem.name)
+                    && Objects.equals(oldItem.driver, newItem.driver)
+                    && Objects.equals(oldItem.mountpoint, newItem.mountpoint);
+        }
+    };
 }

@@ -10,6 +10,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.orcterm.R;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.util.CommandConstants;
 
@@ -26,10 +27,10 @@ public class DockerLogsActivity extends AppCompatActivity {
     
     private SshNative sshNative;
     private long sshHandle = 0;
+    private boolean isSharedSession = false;
     
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private boolean isReading = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,18 +61,21 @@ public class DockerLogsActivity extends AppCompatActivity {
     private void startLogStream(String host, int port, String user, String pass, int authType, String keyPath, String containerId) {
         executor.execute(() -> {
             try {
-                // 连接新会话以获取日志
-                sshHandle = sshNative.connect(host, port);
-                
-                int ret;
-                if (authType == 1 && keyPath != null) {
-                    ret = sshNative.authKey(sshHandle, user, keyPath);
-                } else {
-                    ret = sshNative.authPassword(sshHandle, user, pass);
-                }
+                SessionConnector.Connection connection = SessionConnector.acquire(
+                        sshNative,
+                        host,
+                        port,
+                        user,
+                        pass,
+                        authType,
+                        keyPath,
+                        "Connect failed",
+                        "Auth failed"
+                );
+                sshHandle = connection.getHandle();
+                isSharedSession = connection.isShared();
 
-                if (sshHandle != 0 && ret == 0) {
-                    
+                if (sshHandle != 0) {
                     // 暂时只获取最后100行
                     // "docker logs --tail 100 <id>"
                     String logs = sshNative.exec(sshHandle, String.format(CommandConstants.CMD_DOCKER_LOGS_TAIL, containerId));
@@ -99,11 +103,13 @@ public class DockerLogsActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        isReading = false;
+        final long handle = sshHandle;
+        final boolean shared = isSharedSession;
+        sshHandle = 0;
+        isSharedSession = false;
         new Thread(() -> {
-            if (sshHandle != 0) {
-                sshNative.disconnect(sshHandle);
-                sshHandle = 0;
+            if (handle != 0 && !shared) {
+                sshNative.disconnect(handle);
             }
         }).start();
         executor.shutdownNow();

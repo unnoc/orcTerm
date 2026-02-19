@@ -25,6 +25,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.R;
 import com.orcterm.data.HostEntity;
@@ -354,38 +355,41 @@ public class ServersFragment extends Fragment {
         if (now < throttleUntil) return;
         if (!monitorSemaphore.tryAcquire()) return;
         long handle = monitorHandles.getOrDefault(host.id, 0L);
+        boolean isSharedHandle = sharedMonitorHosts.contains(host.id);
         SshNative ssh = new SshNative();
         long start = now;
         
         try {
             if (handle == 0) {
-                com.orcterm.core.session.SessionManager sessionManager = com.orcterm.core.session.SessionManager.getInstance();
-                com.orcterm.core.terminal.TerminalSession existing = sessionManager.findConnectedSession(host.hostname, host.port, host.username);
-                if (existing != null) {
-                    handle = existing.getHandle();
-                    if (handle != 0) {
-                        monitorHandles.put(host.id, handle);
-                        sharedMonitorHosts.add(host.id);
+                SessionConnector.Connection connection = SessionConnector.acquire(
+                        ssh,
+                        host.hostname,
+                        host.port,
+                        host.username,
+                        host.password,
+                        host.authType,
+                        host.keyPath,
+                        "Connect failed",
+                        "Auth failed"
+                );
+                handle = connection.getHandle();
+                if (!monitoringEnabled) {
+                    if (!connection.isShared()) {
+                        try {
+                            ssh.disconnect(handle);
+                        } catch (Exception ignored) {
+                        }
                     }
-                }
-            }
-            if (handle == 0) {
-                handle = ssh.connect(host.hostname, host.port);
-                if (handle == 0) throw new Exception("Connect failed");
-                
-                int auth;
-                if (host.authType == 1 && host.keyPath != null) {
-                    auth = ssh.authKey(handle, host.username, host.keyPath);
-                } else {
-                    auth = ssh.authPassword(handle, host.username, host.password);
-                }
-                
-                if (auth != 0) {
-                    ssh.disconnect(handle);
-                    throw new Exception("Auth failed");
+                    return;
                 }
                 monitorHandles.put(host.id, handle);
-                sharedMonitorHosts.remove(host.id);
+                if (connection.isShared()) {
+                    sharedMonitorHosts.add(host.id);
+                    isSharedHandle = true;
+                } else {
+                    sharedMonitorHosts.remove(host.id);
+                    isSharedHandle = false;
+                }
             }
 
             // Execute composite command
@@ -406,6 +410,12 @@ public class ServersFragment extends Fragment {
             }
             
         } catch (Exception e) {
+            if (handle != 0 && !isSharedHandle) {
+                try {
+                    ssh.disconnect(handle);
+                } catch (Exception ignored) {
+                }
+            }
             monitorHandles.remove(host.id); // Remove invalid handle
             sharedMonitorHosts.remove(host.id);
             int failCount = monitorFailCounts.getOrDefault(host.id, 0) + 1;
@@ -1090,17 +1100,18 @@ public class ServersFragment extends Fragment {
             SshNative ssh = new SshNative();
             long handle = 0;
             try {
-                handle = ssh.connect(host.hostname, host.port);
-                if (handle == 0) throw new Exception("连接失败");
-
-                int auth;
-                if (host.authType == 1 && host.keyPath != null) {
-                    auth = ssh.authKey(handle, host.username, host.keyPath);
-                } else {
-                    auth = ssh.authPassword(handle, host.username, host.password);
-                }
-
-                if (auth != 0) throw new Exception("认证失败");
+                SessionConnector.Connection connection = SessionConnector.connectFresh(
+                        ssh,
+                        host.hostname,
+                        host.port,
+                        host.username,
+                        host.password,
+                        host.authType,
+                        host.keyPath,
+                        "连接失败",
+                        "认证失败"
+                );
+                handle = connection.getHandle();
 
                 String osRelease = ssh.exec(handle, CommandConstants.CMD_OS_RELEASE);
                 String uname = ssh.exec(handle, CommandConstants.CMD_UNAME_A);
@@ -1169,14 +1180,18 @@ public class ServersFragment extends Fragment {
             SshNative ssh = new SshNative();
             long handle = 0;
             try {
-                handle = ssh.connect(host.hostname, host.port);
-                if (handle == 0) throw new Exception("连接失败");
-
-                int auth;
-                if (host.authType == 1) auth = ssh.authKey(handle, host.username, host.keyPath);
-                else auth = ssh.authPassword(handle, host.username, host.password);
-
-                if (auth != 0) throw new Exception("认证失败");
+                SessionConnector.Connection connection = SessionConnector.connectFresh(
+                        ssh,
+                        host.hostname,
+                        host.port,
+                        host.username,
+                        host.password,
+                        host.authType,
+                        host.keyPath,
+                        "连接失败",
+                        "认证失败"
+                );
+                handle = connection.getHandle();
 
                 ssh.exec(handle, cmd);
 

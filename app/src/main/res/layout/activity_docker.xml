@@ -316,5 +316,46 @@
             android:layout_gravity="center"
             android:visibility="gone" />
 
+        <LinearLayout
+            android:id="@+id/state_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="24dp"
+            android:background="?attr/colorSurface"
+            android:visibility="gone"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:id="@+id/state_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ui_state_loading"
+                android:textColor="?attr/colorOnSurface"
+                android:textStyle="bold"
+                android:textSize="18sp" />
+
+            <TextView
+                android:id="@+id/state_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="14sp"
+                tools:text="正在获取数据..." />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_state_retry"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/action_retry"
+                android:visibility="gone" />
+        </LinearLayout>
+
     </FrameLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

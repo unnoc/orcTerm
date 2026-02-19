@@ -6,21 +6,22 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.recyclerview.widget.RecyclerView;
+import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.ListAdapter;
 
 import com.orcterm.R;
 import com.orcterm.core.docker.DockerImage;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 镜像列表适配器
  */
-public class DockerImageAdapter extends RecyclerView.Adapter<DockerImageAdapter.ViewHolder> {
+public class DockerImageAdapter extends ListAdapter<DockerImage, DockerImageAdapter.ViewHolder> {
 
-    private List<DockerImage> images = new ArrayList<>();
-    private OnImageClickListener listener;
+    private final OnImageClickListener listener;
 
     public interface OnImageClickListener {
         void onImageClick(DockerImage image);
@@ -28,12 +29,13 @@ public class DockerImageAdapter extends RecyclerView.Adapter<DockerImageAdapter.
     }
 
     public DockerImageAdapter(OnImageClickListener listener) {
+        super(DIFF_CALLBACK);
         this.listener = listener;
+        setHasStableIds(true);
     }
 
     public void setImages(List<DockerImage> images) {
-        this.images = images;
-        notifyDataSetChanged();
+        submitList(images == null ? new ArrayList<>() : new ArrayList<>(images));
     }
 
     @NonNull
@@ -45,15 +47,19 @@ public class DockerImageAdapter extends RecyclerView.Adapter<DockerImageAdapter.
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        holder.bind(images.get(position), listener);
+        holder.bind(getItem(position), listener);
     }
 
     @Override
-    public int getItemCount() {
-        return images.size();
+    public long getItemId(int position) {
+        DockerImage item = getItem(position);
+        if (item == null || item.id == null) {
+            return position;
+        }
+        return item.id.hashCode();
     }
 
-    static class ViewHolder extends RecyclerView.ViewHolder {
+    static class ViewHolder extends androidx.recyclerview.widget.RecyclerView.ViewHolder {
         TextView repo, tag, size, created;
 
         public ViewHolder(@NonNull View itemView) {
@@ -70,11 +76,32 @@ public class DockerImageAdapter extends RecyclerView.Adapter<DockerImageAdapter.
             size.setText(i.size);
             created.setText(i.createdSince);
 
-            itemView.setOnClickListener(v -> listener.onImageClick(i));
-            itemView.setOnLongClickListener(v -> {
-                listener.onImageLongClick(i, v);
-                return true;
-            });
+            if (listener != null) {
+                itemView.setOnClickListener(v -> listener.onImageClick(i));
+                itemView.setOnLongClickListener(v -> {
+                    listener.onImageLongClick(i, v);
+                    return true;
+                });
+            } else {
+                itemView.setOnClickListener(null);
+                itemView.setOnLongClickListener(null);
+            }
         }
     }
+
+    private static final DiffUtil.ItemCallback<DockerImage> DIFF_CALLBACK = new DiffUtil.ItemCallback<DockerImage>() {
+        @Override
+        public boolean areItemsTheSame(@NonNull DockerImage oldItem, @NonNull DockerImage newItem) {
+            return Objects.equals(oldItem.id, newItem.id);
+        }
+
+        @Override
+        public boolean areContentsTheSame(@NonNull DockerImage oldItem, @NonNull DockerImage newItem) {
+            return Objects.equals(oldItem.id, newItem.id)
+                    && Objects.equals(oldItem.repository, newItem.repository)
+                    && Objects.equals(oldItem.tag, newItem.tag)
+                    && Objects.equals(oldItem.size, newItem.size)
+                    && Objects.equals(oldItem.createdSince, newItem.createdSince);
+        }
+    };
 }

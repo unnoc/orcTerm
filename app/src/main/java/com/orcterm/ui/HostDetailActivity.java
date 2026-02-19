@@ -32,6 +32,7 @@ import com.github.mikephil.charting.data.PieDataSet;
 import com.github.mikephil.charting.data.PieEntry;
 import com.google.android.material.color.MaterialColors;
 import com.orcterm.R;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.core.session.SessionInfo;
 import com.orcterm.core.session.SessionManager;
@@ -248,19 +249,18 @@ public class HostDetailActivity extends AppCompatActivity {
 
     private void connectSsh() throws Exception {
         if (sshHandle == 0) {
-            sshHandle = sshNative.connect(hostname, port);
-            if (sshHandle == 0) throw new Exception("Connect failed");
-
-            int ret;
-            if (authType == 1 && keyPath != null) {
-                ret = sshNative.authKey(sshHandle, username, keyPath);
-            } else {
-                ret = sshNative.authPassword(sshHandle, username, password);
-            }
-
-            if (ret != 0) {
-                throw new Exception("Auth failed");
-            }
+            SessionConnector.Connection connection = SessionConnector.connectFresh(
+                    sshNative,
+                    hostname,
+                    port,
+                    username,
+                    password,
+                    authType,
+                    keyPath,
+                    "Connect failed",
+                    "Auth failed"
+            );
+            sshHandle = connection.getHandle();
             registerSharedSessionHandle();
         }
     }
@@ -984,24 +984,26 @@ public class HostDetailActivity extends AppCompatActivity {
     protected void onStop() {
         super.onStop();
         isMonitoring = false;
-        new Thread(() -> {
-            if (sshHandle != 0 && !keepSharedHandle) {
-                sshNative.disconnect(sshHandle);
-                sshHandle = 0;
-            }
-        }).start();
+        releaseSshIfNeeded(false);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         isMonitoring = false;
-        new Thread(() -> {
-            if (sshHandle != 0 && !keepSharedHandle) {
-                sshNative.disconnect(sshHandle);
-                sshHandle = 0;
-            }
-        }).start();
+        releaseSshIfNeeded(true);
         executor.shutdownNow();
+    }
+
+    private void releaseSshIfNeeded(boolean forceClear) {
+        final long handle = sshHandle;
+        final boolean keep = keepSharedHandle;
+        if (keep && !forceClear) {
+            return;
+        }
+        sshHandle = 0;
+        if (handle != 0 && !keep) {
+            new Thread(() -> sshNative.disconnect(handle)).start();
+        }
     }
 }

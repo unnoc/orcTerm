@@ -14,6 +14,7 @@ import android.util.Base64;
 import androidx.core.app.NotificationCompat;
 
 import com.orcterm.R;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.session.SessionManager;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.core.terminal.TerminalSession;
@@ -576,18 +577,18 @@ public class SftpTransferService extends Service {
                 }
             }
         }
-        long handle = sshNative.connect(task.hostname, task.port);
-        if (handle == 0) throw new Exception(getString(R.string.err_connect_fail));
-        int ret;
-        if (task.authType == 1 && task.keyPath != null) {
-            ret = sshNative.authKey(handle, task.username, task.keyPath);
-        } else {
-            ret = sshNative.authPassword(handle, task.username, task.password);
-        }
-        if (ret != 0) {
-            sshNative.disconnect(handle);
-            throw new Exception(getString(R.string.err_auth_fail));
-        }
+        SessionConnector.Connection connection = SessionConnector.connectFresh(
+                sshNative,
+                task.hostname,
+                task.port,
+                task.username,
+                task.password,
+                task.authType,
+                task.keyPath,
+                getString(R.string.err_connect_fail),
+                getString(R.string.err_auth_fail)
+        );
+        long handle = connection.getHandle();
         task.isSharedHandle = false;
         task.sharedHandleKey = null;
         return handle;

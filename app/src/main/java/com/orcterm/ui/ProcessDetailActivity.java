@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.button.MaterialButton;
 import com.orcterm.R;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.data.AppDatabase;
 import com.orcterm.data.HostEntity;
@@ -39,6 +40,7 @@ public class ProcessDetailActivity extends AppCompatActivity {
     private HostEntity currentHost;
     private SshNative ssh;
     private long sshHandle = 0;
+    private boolean isSharedSession = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -91,21 +93,19 @@ public class ProcessDetailActivity extends AppCompatActivity {
 
     private void connectSsh() throws Exception {
         if (sshHandle != 0) return;
-        sshHandle = ssh.connect(currentHost.hostname, currentHost.port);
-        if (sshHandle == 0) throw new Exception("Connect failed");
-
-        int auth;
-        if (currentHost.authType == 1 && currentHost.keyPath != null) {
-            auth = ssh.authKey(sshHandle, currentHost.username, currentHost.keyPath);
-        } else {
-            auth = ssh.authPassword(sshHandle, currentHost.username, currentHost.password);
-        }
-
-        if (auth != 0) {
-            ssh.disconnect(sshHandle);
-            sshHandle = 0;
-            throw new Exception("Auth failed");
-        }
+        SessionConnector.Connection connection = SessionConnector.acquire(
+                ssh,
+                currentHost.hostname,
+                currentHost.port,
+                currentHost.username,
+                currentHost.password,
+                currentHost.authType,
+                currentHost.keyPath,
+                "Connect failed",
+                "Auth failed"
+        );
+        sshHandle = connection.getHandle();
+        isSharedSession = connection.isShared();
     }
 
     private void fetchDetail() {
@@ -159,11 +159,13 @@ public class ProcessDetailActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        executor.execute(() -> {
-            if (sshHandle != 0) {
-                ssh.disconnect(sshHandle);
-                sshHandle = 0;
-            }
-        });
+        final long handle = sshHandle;
+        final boolean shared = isSharedSession;
+        sshHandle = 0;
+        isSharedSession = false;
+        executor.shutdownNow();
+        if (handle != 0 && !shared) {
+            new Thread(() -> ssh.disconnect(handle)).start();
+        }
     }
 }

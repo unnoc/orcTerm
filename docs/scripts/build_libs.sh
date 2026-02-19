@@ -7,43 +7,73 @@ WORK_DIR="$SCRIPT_DIR/temp_build"
 CPP_DIR="$ROOT_DIR/sshlib/src/main/cpp"
 OUT_DIR="$SCRIPT_DIR/libs/android"
 ANDROID_ABIS="${ANDROID_ABIS:-arm64-v8a x86_64}"
+ANDROID_NDK="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-${ANDROID_NDK:-}}}"
 
 log() {
   printf "[android-build] %s\n" "$1"
 }
 
 if [ -z "${ANDROID_NDK_ROOT:-}" ]; then
-  log "请设置 ANDROID_NDK_ROOT"
-  exit 1
+  if [ -z "$ANDROID_NDK" ]; then
+    log "请设置 ANDROID_NDK_ROOT（或 ANDROID_NDK_HOME / ANDROID_NDK）"
+    exit 1
+  fi
 fi
+export ANDROID_NDK_ROOT="$ANDROID_NDK"
+
+find_first_file() {
+  local base="$1"
+  shift
+  find "$base" "$@" -print -quit 2>/dev/null || true
+}
+
+find_abi_lib() {
+  local abi="$1"
+  shift
+  local name=""
+  local candidate=""
+  for name in "$@"; do
+    candidate="$(find_first_file "$WORK_DIR" -path "*/${abi}/*" -name "$name")"
+    if [ -n "$candidate" ]; then
+      printf "%s" "$candidate"
+      return 0
+    fi
+  done
+  exit 1
+}
 command -v git >/dev/null 2>&1 || { log "缺少 git"; exit 2; }
 
 rm -rf "$WORK_DIR"
 git clone https://github.com/egorovandreyrm/libssh_android_build_scripts.git "$WORK_DIR"
 cd "$WORK_DIR"
+if [ ! -x "./build_all_abi.sh" ]; then
+  log "缺少 build_all_abi.sh"
+  exit 2
+fi
 ./build_all_abi.sh
 
-OPENSSL_INCLUDE="$(find "$WORK_DIR" -path "*/include/openssl/ssl.h" -print -quit | xargs -I{} dirname {})"
-LIBSSH2_INCLUDE="$(find "$WORK_DIR" -name libssh2.h -print -quit | xargs -I{} dirname {})"
-if [ -z "$OPENSSL_INCLUDE" ] || [ -z "$LIBSSH2_INCLUDE" ]; then
+OPENSSL_SSL_HEADER="$(find_first_file "$WORK_DIR" -path "*/include/openssl/ssl.h")"
+LIBSSH2_HEADER="$(find_first_file "$WORK_DIR" -path "*/include/libssh2.h")"
+if [ -z "$OPENSSL_SSL_HEADER" ] || [ -z "$LIBSSH2_HEADER" ]; then
   log "未找到 include 目录"
   exit 3
 fi
+OPENSSL_INCLUDE="$(dirname "$OPENSSL_SSL_HEADER")"
+LIBSSH2_INCLUDE="$(dirname "$LIBSSH2_HEADER")"
 
 mkdir -p "$CPP_DIR/libs" "$CPP_DIR/include" "$OUT_DIR"
 cp -r "$(dirname "$OPENSSL_INCLUDE")/"* "$CPP_DIR/include/"
-cp -r "$LIBSSH2_INCLUDE/"* "$CPP_DIR/include/"
+find "$LIBSSH2_INCLUDE" -maxdepth 1 -type f -name "libssh2*.h" -exec cp -f {} "$CPP_DIR/include/" \;
 
 FOUND_ANY=0
 for ABI in $ANDROID_ABIS; do
-  LIBSSH2_A="$(find "$WORK_DIR" -path "*/${ABI}*/libssh2.a" -print -quit || true)"
+  LIBSSH2_A="$(find_abi_lib "$ABI" "libssh2.a" "libssh2_static.a" || true)"
+  SSL_A="$(find_abi_lib "$ABI" "libssl.a" || true)"
+  CRYPTO_A="$(find_abi_lib "$ABI" "libcrypto.a" || true)"
   if [ -z "$LIBSSH2_A" ]; then
-    log "未找到 libssh2.a (ABI=$ABI)"
+    log "未找到 libssh2 静态库 (ABI=$ABI)"
     exit 4
   fi
-  BASE_DIR="$(dirname "$LIBSSH2_A")"
-  SSL_A="${BASE_DIR}/libssl.a"
-  CRYPTO_A="${BASE_DIR}/libcrypto.a"
   if [ ! -f "$SSL_A" ] || [ ! -f "$CRYPTO_A" ]; then
     log "未找到 OpenSSL 静态库 (ABI=$ABI)"
     exit 5
@@ -55,9 +85,9 @@ for ABI in $ANDROID_ABIS; do
   cp -f "$LIBSSH2_A" "$OUT_DIR/$ABI/"
   cp -f "$SSL_A" "$OUT_DIR/$ABI/"
   cp -f "$CRYPTO_A" "$OUT_DIR/$ABI/"
-  LIBSSH2_SO="$(find "$BASE_DIR" -maxdepth 1 -name "libssh2*.so" -print -quit || true)"
-  SSL_SO="$(find "$BASE_DIR" -maxdepth 1 -name "libssl*.so" -print -quit || true)"
-  CRYPTO_SO="$(find "$BASE_DIR" -maxdepth 1 -name "libcrypto*.so" -print -quit || true)"
+  LIBSSH2_SO="$(find_abi_lib "$ABI" "libssh2*.so" || true)"
+  SSL_SO="$(find_abi_lib "$ABI" "libssl*.so" || true)"
+  CRYPTO_SO="$(find_abi_lib "$ABI" "libcrypto*.so" || true)"
   if [ -n "$LIBSSH2_SO" ]; then
     cp -f "$LIBSSH2_SO" "$OUT_DIR/$ABI/"
   fi

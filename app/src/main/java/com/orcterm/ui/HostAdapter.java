@@ -91,12 +91,27 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
         } else {
             selectedIds.add(id);
         }
-        notifyDataSetChanged();
+        int position = findPositionById(id);
+        if (position >= 0) {
+            notifyItemChanged(position);
+        }
     }
 
     public void setCurrentHostId(Long hostId) {
+        Long previous = currentHostId;
         this.currentHostId = hostId;
-        notifyDataSetChanged();
+        if (previous != null) {
+            int previousPosition = findPositionById(previous);
+            if (previousPosition >= 0) {
+                notifyItemChanged(previousPosition);
+            }
+        }
+        if (hostId != null) {
+            int currentPosition = findPositionById(hostId);
+            if (currentPosition >= 0) {
+                notifyItemChanged(currentPosition);
+            }
+        }
     }
     
     public void updateStatus(long hostId, HostStatus status) {
@@ -152,6 +167,16 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
         statusMap.clear();
         statusMap.putAll(cache);
         notifyDataSetChanged();
+    }
+
+    private int findPositionById(long hostId) {
+        for (int i = 0; i < getItemCount(); i++) {
+            HostEntity item = getItem(i);
+            if (item != null && item.id == hostId) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     @NonNull
@@ -496,19 +521,19 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
 
         @Override
         public boolean areContentsTheSame(@NonNull HostEntity oldItem, @NonNull HostEntity newItem) {
-            return oldItem.alias.equals(newItem.alias) && 
-                   oldItem.hostname.equals(newItem.hostname) &&
-                   oldItem.username.equals(newItem.username) &&
+            return TextUtils.equals(oldItem.alias, newItem.alias) &&
+                   TextUtils.equals(oldItem.hostname, newItem.hostname) &&
+                   TextUtils.equals(oldItem.username, newItem.username) &&
                    oldItem.port == newItem.port &&
                    oldItem.authType == newItem.authType &&
-                   (oldItem.password == null ? newItem.password == null : oldItem.password.equals(newItem.password)) &&
-                   (oldItem.keyPath == null ? newItem.keyPath == null : oldItem.keyPath.equals(newItem.keyPath)) &&
+                   TextUtils.equals(oldItem.password, newItem.password) &&
+                   TextUtils.equals(oldItem.keyPath, newItem.keyPath) &&
                    oldItem.connectTimeoutSec == newItem.connectTimeoutSec &&
                    oldItem.keepAliveIntervalSec == newItem.keepAliveIntervalSec &&
                    oldItem.keepAliveReply == newItem.keepAliveReply &&
                    oldItem.hostKeyPolicy == newItem.hostKeyPolicy &&
                    oldItem.environmentType == newItem.environmentType &&
-                   (oldItem.terminalThemePreset == null ? newItem.terminalThemePreset == null : oldItem.terminalThemePreset.equals(newItem.terminalThemePreset));
+                   TextUtils.equals(oldItem.terminalThemePreset, newItem.terminalThemePreset);
         }
     }
 }

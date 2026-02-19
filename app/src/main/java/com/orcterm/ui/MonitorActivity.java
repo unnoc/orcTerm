@@ -31,6 +31,7 @@ import com.github.mikephil.charting.data.PieDataSet;
 import com.github.mikephil.charting.data.PieEntry;
 import com.google.android.material.color.MaterialColors;
 import com.orcterm.R;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.data.AppDatabase;
 import com.orcterm.data.HostEntity;
@@ -66,12 +67,14 @@ public class MonitorActivity extends AppCompatActivity {
     private Handler handler = new Handler(Looper.getMainLooper());
     private ExecutorService executor = Executors.newSingleThreadExecutor();
     private boolean isMonitoring = false;
+    private volatile boolean activityVisible = false;
     private static final int REFRESH_INTERVAL = 3000; // 3s interval for real SSH
 
     private long hostId;
     private HostEntity currentHost;
     private SshNative ssh;
     private long sshHandle = 0;
+    private boolean isSharedSession = false;
 
     // Stats history
     private List<Entry> netDownloadEntries = new ArrayList<>();
@@ -139,7 +142,9 @@ public class MonitorActivity extends AppCompatActivity {
                 });
                 return;
             }
-            startMonitoring();
+            if (activityVisible) {
+                startMonitoring();
+            }
         });
     }
 
@@ -261,21 +266,19 @@ public class MonitorActivity extends AppCompatActivity {
 
     private void connectSsh() throws Exception {
         if (sshHandle != 0) return;
-        sshHandle = ssh.connect(currentHost.hostname, currentHost.port);
-        if (sshHandle == 0) throw new Exception("Connect failed");
-        
-        int auth;
-        if (currentHost.authType == 1 && currentHost.keyPath != null) {
-            auth = ssh.authKey(sshHandle, currentHost.username, currentHost.keyPath);
-        } else {
-            auth = ssh.authPassword(sshHandle, currentHost.username, currentHost.password);
-        }
-        
-        if (auth != 0) {
-            ssh.disconnect(sshHandle);
-            sshHandle = 0;
-            throw new Exception("Auth failed");
-        }
+        SessionConnector.Connection connection = SessionConnector.acquire(
+                ssh,
+                currentHost.hostname,
+                currentHost.port,
+                currentHost.username,
+                currentHost.password,
+                currentHost.authType,
+                currentHost.keyPath,
+                "Connect failed",
+                "Auth failed"
+        );
+        sshHandle = connection.getHandle();
+        isSharedSession = connection.isShared();
     }
 
     private void fetchStats() {
@@ -290,7 +293,13 @@ public class MonitorActivity extends AppCompatActivity {
 
     private void stopMonitoring() {
         isMonitoring = false;
-        // Don't disconnect here immediately, let the thread exit loop then disconnect or in onDestroy
+        if (sshHandle != 0 && !isSharedSession) {
+            try {
+                ssh.disconnect(sshHandle);
+            } catch (Exception ignored) {}
+        }
+        sshHandle = 0;
+        isSharedSession = false;
     }
 
     private void parseStats(String output) {
@@ -888,6 +897,22 @@ public class MonitorActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        activityVisible = true;
+        if (currentHost != null) {
+            startMonitoring();
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        activityVisible = false;
+        stopMonitoring();
+    }
+
+    @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == android.R.id.home) {
             finish();
@@ -900,5 +925,6 @@ public class MonitorActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         stopMonitoring();
+        executor.shutdownNow();
     }
 }

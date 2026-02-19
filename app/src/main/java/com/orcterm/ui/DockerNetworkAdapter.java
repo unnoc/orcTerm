@@ -6,21 +6,22 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.recyclerview.widget.RecyclerView;
+import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.ListAdapter;
 
 import com.orcterm.R;
 import com.orcterm.core.docker.DockerNetwork;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 网络列表适配器
  */
-public class DockerNetworkAdapter extends RecyclerView.Adapter<DockerNetworkAdapter.ViewHolder> {
+public class DockerNetworkAdapter extends ListAdapter<DockerNetwork, DockerNetworkAdapter.ViewHolder> {
 
-    private List<DockerNetwork> networks = new ArrayList<>();
-    private OnNetworkClickListener listener;
+    private final OnNetworkClickListener listener;
 
     public interface OnNetworkClickListener {
         void onNetworkClick(DockerNetwork network);
@@ -28,12 +29,13 @@ public class DockerNetworkAdapter extends RecyclerView.Adapter<DockerNetworkAdap
     }
 
     public DockerNetworkAdapter(OnNetworkClickListener listener) {
+        super(DIFF_CALLBACK);
         this.listener = listener;
+        setHasStableIds(true);
     }
 
     public void setNetworks(List<DockerNetwork> networks) {
-        this.networks = networks;
-        notifyDataSetChanged();
+        submitList(networks == null ? new ArrayList<>() : new ArrayList<>(networks));
     }
 
     @NonNull
@@ -45,15 +47,19 @@ public class DockerNetworkAdapter extends RecyclerView.Adapter<DockerNetworkAdap
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        holder.bind(networks.get(position), listener);
+        holder.bind(getItem(position), listener);
     }
 
     @Override
-    public int getItemCount() {
-        return networks.size();
+    public long getItemId(int position) {
+        DockerNetwork item = getItem(position);
+        if (item == null || item.id == null) {
+            return position;
+        }
+        return item.id.hashCode();
     }
 
-    static class ViewHolder extends RecyclerView.ViewHolder {
+    static class ViewHolder extends androidx.recyclerview.widget.RecyclerView.ViewHolder {
         TextView name, driver, id;
 
         public ViewHolder(@NonNull View itemView) {
@@ -66,13 +72,34 @@ public class DockerNetworkAdapter extends RecyclerView.Adapter<DockerNetworkAdap
         public void bind(DockerNetwork n, OnNetworkClickListener listener) {
             name.setText(n.name);
             driver.setText(n.driver);
-            id.setText("ID: " + (n.id.length() > 12 ? n.id.substring(0, 12) : n.id));
+            String networkId = n.id == null ? "" : n.id;
+            id.setText("ID: " + (networkId.length() > 12 ? networkId.substring(0, 12) : networkId));
 
-            itemView.setOnClickListener(v -> listener.onNetworkClick(n));
-            itemView.setOnLongClickListener(v -> {
-                listener.onNetworkLongClick(n, v);
-                return true;
-            });
+            if (listener != null) {
+                itemView.setOnClickListener(v -> listener.onNetworkClick(n));
+                itemView.setOnLongClickListener(v -> {
+                    listener.onNetworkLongClick(n, v);
+                    return true;
+                });
+            } else {
+                itemView.setOnClickListener(null);
+                itemView.setOnLongClickListener(null);
+            }
         }
     }
+
+    private static final DiffUtil.ItemCallback<DockerNetwork> DIFF_CALLBACK = new DiffUtil.ItemCallback<DockerNetwork>() {
+        @Override
+        public boolean areItemsTheSame(@NonNull DockerNetwork oldItem, @NonNull DockerNetwork newItem) {
+            return Objects.equals(oldItem.id, newItem.id);
+        }
+
+        @Override
+        public boolean areContentsTheSame(@NonNull DockerNetwork oldItem, @NonNull DockerNetwork newItem) {
+            return Objects.equals(oldItem.id, newItem.id)
+                    && Objects.equals(oldItem.name, newItem.name)
+                    && Objects.equals(oldItem.driver, newItem.driver)
+                    && Objects.equals(oldItem.scope, newItem.scope);
+        }
+    };
 }

@@ -6,6 +6,8 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.github.mikephil.charting.charts.PieChart;
@@ -17,13 +19,12 @@ import com.orcterm.core.docker.DockerContainer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Docker 容器列表适配器
  */
-public class DockerAdapter extends RecyclerView.Adapter<DockerAdapter.ContainerViewHolder> {
-
-    private List<DockerContainer> containers = new ArrayList<>();
+public class DockerAdapter extends ListAdapter<DockerContainer, DockerAdapter.ContainerViewHolder> {
     private final OnContainerClickListener listener;
 
     public interface OnContainerClickListener {
@@ -36,12 +37,13 @@ public class DockerAdapter extends RecyclerView.Adapter<DockerAdapter.ContainerV
     }
 
     public DockerAdapter(OnContainerClickListener listener) {
+        super(DIFF_CALLBACK);
         this.listener = listener;
+        setHasStableIds(true);
     }
 
     public void setContainers(List<DockerContainer> list) {
-        this.containers = list;
-        notifyDataSetChanged();
+        submitList(list == null ? new ArrayList<>() : new ArrayList<>(list));
     }
 
     @NonNull
@@ -54,12 +56,16 @@ public class DockerAdapter extends RecyclerView.Adapter<DockerAdapter.ContainerV
 
     @Override
     public void onBindViewHolder(@NonNull ContainerViewHolder holder, int position) {
-        holder.bind(containers.get(position), listener);
+        holder.bind(getItem(position), listener);
     }
 
     @Override
-    public int getItemCount() {
-        return containers.size();
+    public long getItemId(int position) {
+        DockerContainer item = getItem(position);
+        if (item == null || item.id == null) {
+            return position;
+        }
+        return item.id.hashCode();
     }
 
     static class ContainerViewHolder extends RecyclerView.ViewHolder {
@@ -197,4 +203,25 @@ public class DockerAdapter extends RecyclerView.Adapter<DockerAdapter.ContainerV
             }
         }
     }
+
+    private static final DiffUtil.ItemCallback<DockerContainer> DIFF_CALLBACK = new DiffUtil.ItemCallback<DockerContainer>() {
+        @Override
+        public boolean areItemsTheSame(@NonNull DockerContainer oldItem, @NonNull DockerContainer newItem) {
+            return Objects.equals(oldItem.id, newItem.id);
+        }
+
+        @Override
+        public boolean areContentsTheSame(@NonNull DockerContainer oldItem, @NonNull DockerContainer newItem) {
+            return Objects.equals(oldItem.id, newItem.id)
+                    && Objects.equals(oldItem.image, newItem.image)
+                    && Objects.equals(oldItem.status, newItem.status)
+                    && Objects.equals(oldItem.names, newItem.names)
+                    && Objects.equals(oldItem.state, newItem.state)
+                    && Objects.equals(oldItem.createdAt, newItem.createdAt)
+                    && Objects.equals(oldItem.cpuUsage, newItem.cpuUsage)
+                    && Objects.equals(oldItem.memUsage, newItem.memUsage)
+                    && Objects.equals(oldItem.netIO, newItem.netIO)
+                    && Objects.equals(oldItem.blockIO, newItem.blockIO);
+        }
+    };
 }

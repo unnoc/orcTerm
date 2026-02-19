@@ -19,6 +19,7 @@ import com.github.mikephil.charting.data.PieEntry;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.MaterialColors;
 import com.orcterm.R;
+import com.orcterm.core.session.SessionConnector;
 import com.orcterm.core.ssh.SshNative;
 import com.orcterm.util.CommandConstants;
 
@@ -48,6 +49,7 @@ public class DockerContainerDetailActivity extends AppCompatActivity {
     
     private SshNative sshNative;
     private long sshHandle = 0;
+    private boolean isSharedSession = false;
     
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -254,19 +256,19 @@ public class DockerContainerDetailActivity extends AppCompatActivity {
             throw new Exception("User is empty");
         }
         if (sshHandle == 0) {
-            sshHandle = sshNative.connect(hostname, port);
-            if (sshHandle == 0) throw new Exception("Connect failed");
-            
-            int ret;
-            if (authType == 1 && keyPath != null) {
-                ret = sshNative.authKey(sshHandle, username, keyPath);
-            } else {
-                ret = sshNative.authPassword(sshHandle, username, password);
-            }
-            
-            if (ret != 0) {
-                throw new Exception("Auth failed");
-            }
+            SessionConnector.Connection connection = SessionConnector.acquire(
+                    sshNative,
+                    hostname,
+                    port,
+                    username,
+                    password,
+                    authType,
+                    keyPath,
+                    "Connect failed",
+                    "Auth failed"
+            );
+            sshHandle = connection.getHandle();
+            isSharedSession = connection.isShared();
         }
     }
     
@@ -449,14 +451,16 @@ public class DockerContainerDetailActivity extends AppCompatActivity {
         super.onDestroy();
         stopStatsMonitoring();
         executor.shutdownNow();
-        if (sshHandle != 0 && sshNative != null) {
+        final long handle = sshHandle;
+        final boolean shared = isSharedSession;
+        sshHandle = 0;
+        isSharedSession = false;
+        if (handle != 0 && sshNative != null && !shared) {
             new Thread(() -> {
                 try {
-                    sshNative.disconnect(sshHandle);
-                } catch (Exception e) {
-                    // ignore
+                    sshNative.disconnect(handle);
+                } catch (Exception ignored) {
                 }
-                sshHandle = 0;
             }).start();
         }
     }
