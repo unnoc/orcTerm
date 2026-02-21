@@ -59,11 +59,11 @@ public class ThemeRepository {
     private static final String PREF_THEME_INDEX = "terminal_theme_index";
     private static final String PREF_BG_ALPHA = "terminal_bg_alpha";
 
-    private static final int[] THEME_TERMIUS = {
-        0xFF151A1E, 0xFFF75F5F, 0xFF7FD962, 0xFFF2C94C,
-        0xFF5AA9FF, 0xFFC792EA, 0xFF5ED4F4, 0xFFE6EDF3,
-        0xFF5A6B7A, 0xFFFF7070, 0xFF9BE77C, 0xFFF6D06F,
-        0xFF7BB9FF, 0xFFD6A7F0, 0xFF7FE3F8, 0xFFFFFFFF
+    private static final int[] THEME_LIGHT = {
+        0xFFFFFFFF, 0xFFD32F2F, 0xFF388E3C, 0xFFF57C00,
+        0xFF1976D2, 0xFF7B1FA2, 0xFF0097A7, 0xFF202124,
+        0xFF5F6368, 0xFFD93025, 0xFF1E8E3E, 0xFFF9AB00,
+        0xFF1A73E8, 0xFF9334E6, 0xFF00B8D4, 0xFF000000
     };
 
     private static final int[] THEME_SOLARIZED_LIGHT = {
@@ -234,7 +234,7 @@ public class ThemeRepository {
         if (fromPrefs != null) return fromPrefs;
         int index = prefs.getInt(PREF_THEME_INDEX, 0);
         if (index == 2) return THEME_SOLARIZED_LIGHT;
-        return THEME_TERMIUS;
+        return THEME_LIGHT;
     }
 
     private int[] readPaletteFromPrefs() {
@@ -281,7 +281,7 @@ public class ThemeRepository {
             if (palette != null && palette.length() >= 16) {
                 int[] scheme = new int[16];
                 for (int i = 0; i < 16; i++) {
-                    scheme[i] = parseColorValue(palette.opt(i), THEME_TERMIUS[i]);
+                    scheme[i] = parseColorValue(palette.opt(i), THEME_LIGHT[i]);
                 }
                 return scheme;
             }
@@ -294,7 +294,7 @@ public class ThemeRepository {
     private int[] getPresetPalette(String presetId) {
         if ("light".equals(presetId)) return THEME_SOLARIZED_LIGHT;
         if ("high_contrast".equals(presetId)) return THEME_HIGH_CONTRAST;
-        return THEME_TERMIUS;
+        return THEME_LIGHT;
     }
 
     private JSONObject buildThemeJsonFromPalette(int[] colors, String presetId) {

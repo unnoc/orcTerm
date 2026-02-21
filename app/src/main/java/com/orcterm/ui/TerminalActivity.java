@@ -173,11 +173,11 @@ public class TerminalActivity extends AppCompatActivity {
         0xFF83A598, 0xFFD3869B, 0xFF8EC07C, 0xFFEBDBB2
     };
 
-    private static final int[] THEME_TERMIUS = {
-        0xFF151A1E, 0xFFF75F5F, 0xFF7FD962, 0xFFF2C94C,
-        0xFF5AA9FF, 0xFFC792EA, 0xFF5ED4F4, 0xFFE6EDF3,
-        0xFF5A6B7A, 0xFFFF7070, 0xFF9BE77C, 0xFFF6D06F,
-        0xFF7BB9FF, 0xFFD6A7F0, 0xFF7FE3F8, 0xFFFFFFFF
+    private static final int[] THEME_LIGHT = {
+        0xFFFFFFFF, 0xFFD32F2F, 0xFF388E3C, 0xFFF57C00,
+        0xFF1976D2, 0xFF7B1FA2, 0xFF0097A7, 0xFF202124,
+        0xFF5F6368, 0xFFD93025, 0xFF1E8E3E, 0xFFF9AB00,
+        0xFF1A73E8, 0xFF9334E6, 0xFF00B8D4, 0xFF000000
     };
     private static final int[] THEME_HIGH_CONTRAST = {
         0xFF000000, 0xFFFF3B30, 0xFF34C759, 0xFFFFCC00,
@@ -187,7 +187,7 @@ public class TerminalActivity extends AppCompatActivity {
     };
     
     private int currentFontSize = 36;
-    private int[] currentScheme = THEME_TERMIUS;
+    private int[] currentScheme = THEME_LIGHT;
     private float currentLineHeight = 1.0f;
     private float currentLetterSpacing = 0.0f;
     private int currentFontFamily = 0;
@@ -2068,7 +2068,7 @@ public class TerminalActivity extends AppCompatActivity {
             case 2205: applyColorScheme(THEME_DRACULA); break;
             case 2206: applyColorScheme(THEME_NORD); break;
             case 2207: applyColorScheme(THEME_GRUVBOX); break;
-            case 2208: applyColorScheme(THEME_TERMIUS); break;
+            case 2208: applyColorScheme(THEME_LIGHT); break;
             case 2010: showThemeConfigDialog(); break;
             case 2011: showImportThemeDialog(); break;
             case 2012: showExportThemeDialog(); break;
@@ -2286,7 +2286,7 @@ public class TerminalActivity extends AppCompatActivity {
         if (scheme == SCHEME_SOLARIZED_DARK) idx = 1;
         else if (scheme == SCHEME_SOLARIZED_LIGHT) idx = 2;
         else if (scheme == SCHEME_MONOKAI) idx = 3;
-        else if (scheme == THEME_TERMIUS) idx = 4;
+        else if (scheme == THEME_LIGHT) idx = 4;
         terminalPrefs.edit().putInt("terminal_theme_index", idx).apply();
     }
 
@@ -3833,7 +3833,7 @@ public class TerminalActivity extends AppCompatActivity {
         if (config.ansiColors != null && config.ansiColors.length >= 16) {
             System.arraycopy(config.ansiColors, 0, scheme, 0, 16);
         } else {
-            System.arraycopy(THEME_TERMIUS, 0, scheme, 0, 16);
+            System.arraycopy(THEME_LIGHT, 0, scheme, 0, 16);
         }
         scheme[0] = config.backgroundColor;
         scheme[7] = config.foregroundColor;

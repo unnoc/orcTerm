@@ -17,7 +17,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -106,9 +105,7 @@ public class SshTerminalActivity extends AppCompatActivity {
     private MaterialButton toggleKeypadButton;
     private MaterialButton toggleSoftKeyboardButton;
     private MaterialButton keyboardOptionsButton;
-    private ImageView quickKeypadStatusIcon;
-    private ImageView softKeyboardStatusIcon;
-    private LinearLayout keyboardControlBar;
+    private View keyboardControlBar;
     private LinearLayout quickKeypadPanel;
     private LinearLayout quickKeyRow1;
     private LinearLayout quickKeyRow2;
@@ -247,8 +244,6 @@ public class SshTerminalActivity extends AppCompatActivity {
         toggleKeypadButton = findViewById(R.id.btn_toggle_keypad);
         toggleSoftKeyboardButton = findViewById(R.id.btn_toggle_soft_keyboard);
         keyboardOptionsButton = findViewById(R.id.btn_keyboard_options);
-        quickKeypadStatusIcon = findViewById(R.id.iv_status_quick_keypad);
-        softKeyboardStatusIcon = findViewById(R.id.iv_status_soft_ime);
         keyboardControlBar = findViewById(R.id.keyboard_control_bar);
         quickKeypadPanel = findViewById(R.id.quick_keypad_panel);
         quickKeyRow1 = findViewById(R.id.quick_key_row_1);
@@ -462,16 +457,6 @@ public class SshTerminalActivity extends AppCompatActivity {
                 softKeyboardVisible ? R.string.terminal_soft_keyboard_toggle_hide : R.string.terminal_soft_keyboard_toggle_show));
             applyControlIconState(toggleSoftKeyboardButton, softKeyboardVisible);
         }
-        if (quickKeypadStatusIcon != null) {
-            quickKeypadStatusIcon.setContentDescription(getString(
-                keypadVisible ? R.string.terminal_keyboard_status_shown : R.string.terminal_keyboard_status_hidden));
-            applyStatusIconState(quickKeypadStatusIcon, keypadVisible);
-        }
-        if (softKeyboardStatusIcon != null) {
-            softKeyboardStatusIcon.setContentDescription(getString(
-                softKeyboardVisible ? R.string.terminal_soft_keyboard_status_on : R.string.terminal_soft_keyboard_status_off));
-            applyStatusIconState(softKeyboardStatusIcon, softKeyboardVisible);
-        }
     }
 
     private void applyControlIconState(MaterialButton button, boolean active) {
@@ -483,15 +468,9 @@ public class SshTerminalActivity extends AppCompatActivity {
 
         button.setIconTint(ColorStateList.valueOf(active ? activeIcon : inactiveIcon));
         button.setBackgroundTintList(ColorStateList.valueOf(active ? activeBg : inactiveBg));
+        button.setCornerRadius(dpToPx(14));
         button.setStrokeColor(ColorStateList.valueOf(outline));
         button.setStrokeWidth(dpToPx(1));
-    }
-
-    private void applyStatusIconState(ImageView icon, boolean active) {
-        int tint = active
-            ? MaterialColors.getColor(icon, com.google.android.material.R.attr.colorPrimary, 0xFF00658B)
-            : MaterialColors.getColor(icon, com.google.android.material.R.attr.colorOnSurfaceVariant, 0x66000000);
-        icon.setImageTintList(ColorStateList.valueOf(tint));
     }
 
     private void applyKeyboardHeightSetting() {
@@ -503,14 +482,14 @@ public class SshTerminalActivity extends AppCompatActivity {
         float density = getResources().getDisplayMetrics().density;
         switch (heightOption) {
             case 0:
-                params.height = (int) (density * 132);
+                params.height = (int) (density * 124);
                 break;
             case 2:
-                params.height = (int) (density * 220);
+                params.height = (int) (density * 214);
                 break;
             case 1:
             default:
-                params.height = (int) (density * 176);
+                params.height = (int) (density * 168);
                 break;
         }
         quickKeypadPanel.setLayoutParams(params);
@@ -728,34 +707,57 @@ public class SshTerminalActivity extends AppCompatActivity {
             return;
         }
         rowView.setVisibility(View.VISIBLE);
+        rowView.removeAllViews();
 
-        for (QuickKeySpec spec : specs) {
-            MaterialButton btn = createQuickKeyButton(spec);
+        boolean singleKeyRow = specs.size() == 1;
+        for (int i = 0; i < specs.size(); i++) {
+            QuickKeySpec spec = specs.get(i);
+            MaterialButton btn = createQuickKeyButton(spec, singleKeyRow);
             rowView.addView(btn);
             quickKeyButtons.put(spec.mapKey, btn);
         }
+        if (singleKeyRow) {
+            View spacer = new View(this);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, 1, 1f);
+            spacer.setLayoutParams(lp);
+            rowView.addView(spacer);
+        }
     }
 
-    private MaterialButton createQuickKeyButton(QuickKeySpec spec) {
+    private MaterialButton createQuickKeyButton(QuickKeySpec spec, boolean compact) {
         MaterialButton btn = new MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
         btn.setAllCaps(false);
-        btn.setText(spec.label);
-        btn.setTextSize(12f);
+        btn.setTextSize(12.5f);
         btn.setInsetTop(0);
         btn.setInsetBottom(0);
         btn.setMinHeight(0);
         btn.setMinimumHeight(0);
         btn.setMinWidth(0);
         btn.setMinimumWidth(0);
+        btn.setTypeface(Typeface.MONOSPACE, Typeface.NORMAL);
 
         int padH = dpToPx(8);
-        int padV = dpToPx(6);
+        int padV = dpToPx(7);
         btn.setPadding(padH, padV, padH, padV);
 
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        int margin = dpToPx(4);
+        LinearLayout.LayoutParams lp = compact
+            ? new LinearLayout.LayoutParams(dpToPx(88), ViewGroup.LayoutParams.WRAP_CONTENT)
+            : new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        int margin = dpToPx(3);
         lp.setMargins(margin, margin, margin, margin);
         btn.setLayoutParams(lp);
+
+        int iconRes = resolveQuickKeyIcon(spec);
+        if (iconRes != 0) {
+            btn.setText("");
+            btn.setIconResource(iconRes);
+            btn.setIconSize(dpToPx(16));
+            btn.setIconPadding(0);
+            btn.setContentDescription(spec.label);
+        } else {
+            btn.setText(spec.label);
+            btn.setContentDescription(spec.label);
+        }
 
         styleQuickKeyButton(btn, false);
 
@@ -769,18 +771,36 @@ public class SshTerminalActivity extends AppCompatActivity {
         return btn;
     }
 
+    private int resolveQuickKeyIcon(QuickKeySpec spec) {
+        if (spec.action == QuickKeyAction.COPY) {
+            return R.drawable.ic_action_content_copy;
+        }
+        if (spec.action == QuickKeyAction.PASTE) {
+            return R.drawable.ic_action_content_paste;
+        }
+        if (spec.action == QuickKeyAction.TOGGLE_IME) {
+            return R.drawable.ic_action_keyboard;
+        }
+        if (spec.action == QuickKeyAction.TOGGLE_PANEL) {
+            return R.drawable.ic_action_terminal;
+        }
+        return 0;
+    }
+
     private void styleQuickKeyButton(MaterialButton button, boolean active) {
-        int fg = MaterialColors.getColor(button, com.google.android.material.R.attr.colorOnSurface, 0xFF111111);
+        int fg = MaterialColors.getColor(button, com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF333333);
         int outline = MaterialColors.getColor(button, com.google.android.material.R.attr.colorOutline, 0x33000000);
-        int inactiveBg = MaterialColors.getColor(button, com.google.android.material.R.attr.colorSurface, 0xFFFFFFFF);
+        int inactiveBg = MaterialColors.getColor(button, com.google.android.material.R.attr.colorSurface, 0xFFF6F7F9);
         int activeBg = MaterialColors.getColor(button, com.google.android.material.R.attr.colorPrimaryContainer, 0xFFD7E3FF);
         int activeFg = MaterialColors.getColor(button, com.google.android.material.R.attr.colorOnPrimaryContainer, fg);
 
-        button.setCornerRadius(dpToPx(12));
+        button.setCornerRadius(dpToPx(10));
         button.setStrokeWidth(dpToPx(1));
         button.setStrokeColor(ColorStateList.valueOf(outline));
         button.setBackgroundTintList(ColorStateList.valueOf(active ? activeBg : inactiveBg));
-        button.setTextColor(active ? activeFg : fg);
+        ColorStateList textOrIconColor = ColorStateList.valueOf(active ? activeFg : fg);
+        button.setTextColor(textOrIconColor);
+        button.setIconTint(textOrIconColor);
     }
 
     private void onQuickKeyPressed(QuickKeySpec spec) {
