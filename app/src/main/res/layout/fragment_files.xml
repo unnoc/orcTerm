@@ -6,16 +6,13 @@
     android:paddingTop="4dp"
     android:paddingBottom="4dp">
 
-    <TextView
-        android:id="@+id/text_no_sessions"
+    <include
+        android:id="@+id/empty_state_container"
+        layout="@layout/view_empty_state"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
-        android:gravity="center"
-        android:text="@string/session_empty_files"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:visibility="gone"
-        android:textSize="16sp" />
+        android:visibility="gone" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_sessions"

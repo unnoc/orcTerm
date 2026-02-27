@@ -45,7 +45,7 @@
             android:parentActivityName=".ui.MainActivity" />
 
         <activity
-            android:name=".ui.TerminalActivity"
+            android:name=".ui.BackTerminalActivity"
             android:label="Terminal"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden|keyboard|screenLayout|uiMode|density"
@@ -62,7 +62,7 @@
         <activity
             android:name=".ui.ThemeEditorActivity"
             android:label="@string/settings_terminal_theme_editor_title"
-            android:parentActivityName=".ui.TerminalActivity"
+            android:parentActivityName=".ui.BackTerminalActivity"
             android:theme="@style/Theme.OrcTerm" />
             
         <activity

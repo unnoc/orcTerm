@@ -17,6 +17,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -100,12 +101,8 @@ public class SshTerminalActivity extends AppCompatActivity {
 
     private TextView hostText;
     private TextView statusText;
-    private MaterialButton reconnectButton;
-    private MaterialButton disconnectButton;
-    private MaterialButton toggleKeypadButton;
-    private MaterialButton toggleSoftKeyboardButton;
-    private MaterialButton keyboardOptionsButton;
-    private View keyboardControlBar;
+    private MaterialButton newSessionButton;
+    private ImageView closeSessionButton;
     private LinearLayout quickKeypadPanel;
     private LinearLayout quickKeyRow1;
     private LinearLayout quickKeyRow2;
@@ -239,12 +236,8 @@ public class SshTerminalActivity extends AppCompatActivity {
     private void bindViews() {
         hostText = findViewById(R.id.text_terminal_host);
         statusText = findViewById(R.id.text_terminal_status);
-        reconnectButton = findViewById(R.id.btn_terminal_reconnect);
-        disconnectButton = findViewById(R.id.btn_terminal_disconnect);
-        toggleKeypadButton = findViewById(R.id.btn_toggle_keypad);
-        toggleSoftKeyboardButton = findViewById(R.id.btn_toggle_soft_keyboard);
-        keyboardOptionsButton = findViewById(R.id.btn_keyboard_options);
-        keyboardControlBar = findViewById(R.id.keyboard_control_bar);
+        newSessionButton = findViewById(R.id.btn_terminal_new_session);
+        closeSessionButton = findViewById(R.id.btn_close_session);
         quickKeypadPanel = findViewById(R.id.quick_keypad_panel);
         quickKeyRow1 = findViewById(R.id.quick_key_row_1);
         quickKeyRow2 = findViewById(R.id.quick_key_row_2);
@@ -310,20 +303,21 @@ public class SshTerminalActivity extends AppCompatActivity {
     }
 
     private void setupKeyboardUi() {
-        keypadVisible = terminalPrefs.getBoolean(PREF_KEYPAD_VISIBLE, true);
+        keypadVisible = true; // Always visible
         keyboardLayoutMode = terminalPrefs.getInt(PREF_KEYBOARD_LAYOUT_OPTION, 0);
         rebuildQuickKeypad();
-        quickKeypadPanel.setVisibility(keypadVisible ? View.VISIBLE : View.GONE);
+        quickKeypadPanel.setVisibility(View.VISIBLE);
         applyKeyboardHeightSetting();
         updateKeyboardStatusUi();
     }
 
     private void setupActions() {
-        reconnectButton.setOnClickListener(v -> reconnectSession());
-        disconnectButton.setOnClickListener(v -> disconnectSession());
-        toggleKeypadButton.setOnClickListener(v -> toggleKeypadVisibility());
-        toggleSoftKeyboardButton.setOnClickListener(v -> toggleSoftKeyboard());
-        keyboardOptionsButton.setOnClickListener(v -> showKeyboardOptionsDialog());
+        if (closeSessionButton != null) {
+            closeSessionButton.setOnClickListener(v -> {
+                disconnectSession();
+                finish();
+            });
+        }
     }
 
     private void setupSettingsObservers() {
@@ -436,41 +430,15 @@ public class SshTerminalActivity extends AppCompatActivity {
     }
 
     private void toggleKeypadVisibility() {
-        keypadVisible = !keypadVisible;
-        quickKeypadPanel.setVisibility(keypadVisible ? View.VISIBLE : View.GONE);
-        terminalPrefs.edit().putBoolean(PREF_KEYPAD_VISIBLE, keypadVisible).apply();
+        // Keypad is always visible now
+        keypadVisible = true;
+        quickKeypadPanel.setVisibility(View.VISIBLE);
+        // terminalPrefs.edit().putBoolean(PREF_KEYPAD_VISIBLE, keypadVisible).apply();
         updateKeyboardStatusUi();
     }
 
     private void updateKeyboardStatusUi() {
-        if (keyboardControlBar != null) {
-            keyboardControlBar.setVisibility(View.VISIBLE);
-        }
         softKeyboardVisible = isSoftKeyboardActive() || softKeyboardVisible;
-        if (toggleKeypadButton != null) {
-            toggleKeypadButton.setContentDescription(getString(
-                keypadVisible ? R.string.terminal_keyboard_toggle_hide : R.string.terminal_keyboard_toggle_show));
-            applyControlIconState(toggleKeypadButton, keypadVisible);
-        }
-        if (toggleSoftKeyboardButton != null) {
-            toggleSoftKeyboardButton.setContentDescription(getString(
-                softKeyboardVisible ? R.string.terminal_soft_keyboard_toggle_hide : R.string.terminal_soft_keyboard_toggle_show));
-            applyControlIconState(toggleSoftKeyboardButton, softKeyboardVisible);
-        }
-    }
-
-    private void applyControlIconState(MaterialButton button, boolean active) {
-        int activeIcon = MaterialColors.getColor(button, com.google.android.material.R.attr.colorOnPrimaryContainer, 0xFF102A43);
-        int activeBg = MaterialColors.getColor(button, com.google.android.material.R.attr.colorPrimaryContainer, 0xFFD7E3FF);
-        int inactiveIcon = MaterialColors.getColor(button, com.google.android.material.R.attr.colorOnSurfaceVariant, 0x99000000);
-        int inactiveBg = MaterialColors.getColor(button, com.google.android.material.R.attr.colorSurface, 0xFFFFFFFF);
-        int outline = MaterialColors.getColor(button, com.google.android.material.R.attr.colorOutline, 0x33000000);
-
-        button.setIconTint(ColorStateList.valueOf(active ? activeIcon : inactiveIcon));
-        button.setBackgroundTintList(ColorStateList.valueOf(active ? activeBg : inactiveBg));
-        button.setCornerRadius(dpToPx(14));
-        button.setStrokeColor(ColorStateList.valueOf(outline));
-        button.setStrokeWidth(dpToPx(1));
     }
 
     private void applyKeyboardHeightSetting() {
@@ -648,7 +616,7 @@ public class SshTerminalActivity extends AppCompatActivity {
             row3.add(new QuickKeySpec("-", "-", "-", QuickKeyAction.SEND));
             row3.add(new QuickKeySpec(";", ";", ";", QuickKeyAction.SEND));
             row3.add(new QuickKeySpec("=", "=", "=", QuickKeyAction.SEND));
-            row3.add(new QuickKeySpec("KBD", "KBD", "", QuickKeyAction.TOGGLE_PANEL));
+            // row3.add(new QuickKeySpec("KBD", "KBD", "", QuickKeyAction.TOGGLE_PANEL));
         } else if (keyboardLayoutMode == 2) {
             // Server admin
             row1.add(new QuickKeySpec("Esc", "ESC", ESC, QuickKeyAction.SEND));
@@ -673,7 +641,7 @@ public class SshTerminalActivity extends AppCompatActivity {
             row3.add(new QuickKeySpec("Ins", "INS", ESC + "[2~", QuickKeyAction.SEND));
             row3.add(new QuickKeySpec("Del", "DEL", ESC + "[3~", QuickKeyAction.SEND));
             row3.add(new QuickKeySpec("Copy", "COPY", "", QuickKeyAction.COPY));
-            row3.add(new QuickKeySpec("KBD", "KBD", "", QuickKeyAction.TOGGLE_PANEL));
+            // row3.add(new QuickKeySpec("KBD", "KBD", "", QuickKeyAction.TOGGLE_PANEL));
         } else {
             // Standard (screenshot-like)
             row1.add(new QuickKeySpec("Esc", "ESC", ESC, QuickKeyAction.SEND));
@@ -690,7 +658,7 @@ public class SshTerminalActivity extends AppCompatActivity {
             row2.add(new QuickKeySpec("↓", "↓", ESC + "[B", QuickKeyAction.SEND));
             row2.add(new QuickKeySpec("→", "→", ESC + "[C", QuickKeyAction.SEND));
             row2.add(new QuickKeySpec("Paste", "PASTE", "", QuickKeyAction.PASTE));
-            row2.add(new QuickKeySpec("KBD", "KBD", "", QuickKeyAction.TOGGLE_PANEL));
+            // row2.add(new QuickKeySpec("KBD", "KBD", "", QuickKeyAction.TOGGLE_PANEL));
 
             row3.add(new QuickKeySpec("Shift", "SHIFT", "SHIFT", QuickKeyAction.MODIFIER));
         }
@@ -1355,9 +1323,6 @@ public class SshTerminalActivity extends AppCompatActivity {
     private void updateStatus(String status, int color) {
         statusText.setText(status);
         statusText.setTextColor(color);
-        boolean connected = session != null && session.isConnected();
-        disconnectButton.setEnabled(connected);
-        reconnectButton.setEnabled(!TextUtils.isEmpty(hostname) && !TextUtils.isEmpty(username));
     }
 
     private void upsertSessionInfo(boolean connected) {

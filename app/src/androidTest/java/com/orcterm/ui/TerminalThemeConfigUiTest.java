@@ -21,9 +21,9 @@ public class TerminalThemeConfigUiTest {
 
     @Test
     public void opensThemeConfigDialog() {
-        Intent intent = new Intent(ApplicationProvider.getApplicationContext(), TerminalActivity.class);
+        Intent intent = new Intent(ApplicationProvider.getApplicationContext(), BackTerminalActivity.class);
         intent.putExtra("theme_action", "editor");
-        try (ActivityScenario<TerminalActivity> scenario = ActivityScenario.launch(intent)) {
+        try (ActivityScenario<BackTerminalActivity> scenario = ActivityScenario.launch(intent)) {
             onView(withId(R.id.theme_preview)).check(matches(isDisplayed()));
         }
     }

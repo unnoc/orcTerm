@@ -7,62 +7,82 @@
     android:orientation="vertical">
 
     <LinearLayout
+        android:id="@+id/terminal_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="?attr/colorSurface"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="10dp">
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="8dp">
 
-        <LinearLayout
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_terminal_new_session"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:minWidth="0dp"
+            app:icon="@drawable/ic_action_add"
+            app:iconTint="?attr/colorOnSurface"
+            android:contentDescription="@string/action_add_host" />
+
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/text_terminal_host"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="?attr/colorOnSurface"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/text_terminal_status"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="12sp" />
-        </LinearLayout>
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_terminal_reconnect"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:textColor="?attr/colorOnSurface"
-            app:strokeColor="?attr/colorOutline"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:text="@string/ssh_terminal_reconnect"
-            android:textAllCaps="false" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_terminal_disconnect"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:insetTop="0dp"
-            android:insetBottom="0dp"
-            android:minWidth="0dp"
-            android:textColor="?attr/colorOnSurface"
+            android:layout_weight="1"
+            app:cardBackgroundColor="?attr/colorSurface"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="0dp"
             app:strokeColor="?attr/colorOutline"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:text="@string/ssh_terminal_disconnect"
-            android:textAllCaps="false" />
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="6dp">
+
+                <TextView
+                    android:id="@+id/text_terminal_host"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:singleLine="true"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/text_terminal_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:visibility="gone"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="11sp" />
+
+                <ImageView
+                    android:id="@+id/btn_close_session"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:src="@drawable/ic_action_close"
+                    app:tint="?attr/colorOnSurfaceVariant"
+                    android:contentDescription="@string/action_close" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
     </LinearLayout>
 
     <com.orcterm.ui.widget.TerminalView
@@ -78,91 +98,6 @@
         android:alpha="0"
         android:focusable="true"
         android:focusableInTouchMode="true" />
-
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/keyboard_control_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="10dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="10dp"
-        android:layout_marginBottom="6dp"
-        app:cardBackgroundColor="?attr/colorSurface"
-        app:cardCornerRadius="18dp"
-        app:cardElevation="0dp"
-        app:strokeColor="?attr/colorOutline"
-        app:strokeWidth="1dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="10dp"
-            android:paddingTop="8dp"
-            android:paddingEnd="10dp"
-            android:paddingBottom="8dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/nav_terminal_title"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_toggle_keypad"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
-                android:contentDescription="@string/terminal_keyboard_toggle_hide"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:minWidth="0dp"
-                android:text=""
-                app:icon="@drawable/ic_action_terminal"
-                app:iconGravity="textStart"
-                app:iconSize="18dp"
-                app:iconTint="?attr/colorOnSurface"
-                app:strokeColor="?attr/colorOutline" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_toggle_soft_keyboard"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
-                android:layout_marginStart="8dp"
-                android:contentDescription="@string/terminal_soft_keyboard_toggle_show"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:minWidth="0dp"
-                android:text=""
-                app:icon="@drawable/ic_action_keyboard"
-                app:iconGravity="textStart"
-                app:iconSize="18dp"
-                app:iconTint="?attr/colorOnSurface"
-                app:strokeColor="?attr/colorOutline" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_keyboard_options"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_width="42dp"
-                android:layout_height="42dp"
-                android:layout_marginStart="8dp"
-                android:contentDescription="@string/terminal_keyboard_options"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"
-                android:minWidth="0dp"
-                android:text=""
-                app:icon="@drawable/ic_action_settings"
-                app:iconGravity="textStart"
-                app:iconSize="18dp"
-                app:iconTint="?attr/colorOnSurface"
-                app:strokeColor="?attr/colorOutline" />
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
 
     <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"

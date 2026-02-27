@@ -266,8 +266,8 @@ public class HostAdapter extends ListAdapter<HostEntity, HostAdapter.HostViewHol
             tvDiskRead = itemView.findViewById(R.id.tv_disk_read);
             tvDiskWrite = itemView.findViewById(R.id.tv_disk_write);
             
-            checkBox = itemView.findViewById(R.id.checkbox_select);
-            btnMore = itemView.findViewById(R.id.btn_more_actions);
+            checkBox = itemView.findViewById(R.id.checkbox);
+            btnMore = itemView.findViewById(R.id.btn_more);
             cardView = (com.google.android.material.card.MaterialCardView) itemView;
         }
 

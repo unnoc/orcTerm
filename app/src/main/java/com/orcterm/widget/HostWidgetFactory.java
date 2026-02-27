@@ -2,6 +2,7 @@ package com.orcterm.widget;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.Binder;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.RemoteViews;
@@ -34,10 +35,15 @@ public class HostWidgetFactory implements RemoteViewsService.RemoteViewsFactory 
     @Override
     public void onDataSetChanged() {
         // Refresh data
+        final long identityToken = Binder.clearCallingIdentity();
         try {
             hosts = AppDatabase.getDatabase(context).hostDao().getAllHostsNow();
         } catch (Exception e) {
             e.printStackTrace();
+            // Fallback to empty list to avoid crashes
+            hosts = new ArrayList<>();
+        } finally {
+            Binder.restoreCallingIdentity(identityToken);
         }
     }
 

@@ -60,6 +60,15 @@ public class MainActivity extends AppCompatActivity {
     private int currentPage = 0;
     private String currentHostLabel = null;
 
+    public void navigateToServers() {
+        if (viewPager != null) {
+            viewPager.setCurrentItem(0);
+            if (bottomNavigationView != null) {
+                bottomNavigationView.setSelectedItemId(R.id.nav_servers);
+            }
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

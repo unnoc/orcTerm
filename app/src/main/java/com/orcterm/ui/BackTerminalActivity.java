@@ -30,8 +30,6 @@ import android.widget.LinearLayout;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.lifecycle.Observer;
-import androidx.lifecycle.ViewModelProvider;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -80,7 +78,7 @@ import java.util.Locale;
  * 4. 会话管理: 维护 SSH/Telnet/Local 会话生命周期。
  * 5. 状态持久化: 保存容器、分组和当前活动状态。
  */
-public class TerminalActivity extends AppCompatActivity {
+public class BackTerminalActivity extends AppCompatActivity {
 
     private static final String PREFS_NAME = "terminal_containers";
     private static final String PREF_GROUPS = "groups";
@@ -185,7 +183,14 @@ public class TerminalActivity extends AppCompatActivity {
         0xFF3A3A3C, 0xFFFF453A, 0xFF30D158, 0xFFFFD60A,
         0xFF5E5CE6, 0xFFFF375F, 0xFF70D7FF, 0xFFFFFFFF
     };
-    
+
+    private static final int[] THEME_TERMIUS = {
+        0xFF1E2127, 0xFFE06C75, 0xFF98C379, 0xFFE5C07B,
+        0xFF61AFEF, 0xFFC678DD, 0xFF56B6C2, 0xFFDCDFE4,
+        0xFF5C6370, 0xFFE06C75, 0xFF98C379, 0xFFE5C07B,
+        0xFF61AFEF, 0xFFC678DD, 0xFF56B6C2, 0xFFFFFFFF
+    };
+
     private int currentFontSize = 36;
     private int[] currentScheme = THEME_LIGHT;
     private float currentLineHeight = 1.0f;
@@ -666,6 +671,20 @@ public class TerminalActivity extends AppCompatActivity {
                 toggleKeypadVisibility();
                 return;
             }
+            if ("COPY".equals(value)) {
+                if (activeContainer != null) {
+                    copyTerminalSelection(activeContainer);
+                }
+                return;
+            }
+            if ("PASTE".equals(value)) {
+                pasteFromClipboard();
+                return;
+            }
+            if ("IME".equals(value)) {
+                focusAndShowSoftKeyboard();
+                return;
+            }
             if (activeContainer == null) {
                 return;
             }
@@ -873,6 +892,17 @@ public class TerminalActivity extends AppCompatActivity {
             if (imm != null && getCurrentFocus() != null) {
                 imm.hideSoftInputFromWindow(getCurrentFocus().getWindowToken(), 0);
             }
+        }
+    }
+
+    private void focusAndShowSoftKeyboard() {
+        if (inputCommand == null) {
+            return;
+        }
+        inputCommand.requestFocus();
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.showSoftInput(inputCommand, InputMethodManager.SHOW_IMPLICIT);
         }
     }
 
@@ -3419,7 +3449,7 @@ public class TerminalActivity extends AppCompatActivity {
         sessionLogManager.getAllLogs(logs -> {
             runOnUiThread(() -> {
                 if (logs.isEmpty()) {
-                    Toast.makeText(TerminalActivity.this, "暂无会话日志", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(BackTerminalActivity.this, "暂无会话日志", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 
@@ -3445,7 +3475,7 @@ public class TerminalActivity extends AppCompatActivity {
                             .setMessage("确定要删除所有会话日志吗？")
                             .setPositiveButton("删除", (d, w) -> {
                                 sessionLogManager.clearAllLogs(deletedCount -> {
-                                    runOnUiThread(() -> Toast.makeText(TerminalActivity.this, 
+                                    runOnUiThread(() -> Toast.makeText(BackTerminalActivity.this,
                                         "已清理 " + deletedCount + " 个日志文件", Toast.LENGTH_SHORT).show());
                                 });
                             })
@@ -3466,21 +3496,21 @@ public class TerminalActivity extends AppCompatActivity {
                 }
                 
                 // 创建可滚动的文本视图
-                android.widget.ScrollView scrollView = new android.widget.ScrollView(TerminalActivity.this);
-                TextView textView = new TextView(TerminalActivity.this);
+                android.widget.ScrollView scrollView = new android.widget.ScrollView(BackTerminalActivity.this);
+                TextView textView = new TextView(BackTerminalActivity.this);
                 textView.setText(content.toString());
                 textView.setTextSize(12);
                 textView.setPadding(16, 16, 16, 16);
                 textView.setTypeface(Typeface.MONOSPACE);
                 scrollView.addView(textView);
                 
-                new AlertDialog.Builder(TerminalActivity.this)
+                new AlertDialog.Builder(BackTerminalActivity.this)
                     .setTitle(log.hostInfo)
                     .setView(scrollView)
                     .setPositiveButton("关闭", null)
                     .setNegativeButton("删除", (d, w) -> {
                         sessionLogManager.deleteLog(log.logFilePath, () -> {
-                            runOnUiThread(() -> Toast.makeText(TerminalActivity.this, 
+                            runOnUiThread(() -> Toast.makeText(BackTerminalActivity.this,
                                 "日志已删除", Toast.LENGTH_SHORT).show());
                         });
                     })
@@ -4552,7 +4582,7 @@ public class TerminalActivity extends AppCompatActivity {
             AtomicBoolean completed = new AtomicBoolean(false);
             
             runOnUiThread(() -> {
-                AlertDialog.Builder builder = new AlertDialog.Builder(TerminalActivity.this);
+                AlertDialog.Builder builder = new AlertDialog.Builder(BackTerminalActivity.this);
                 
                 String message;
                 

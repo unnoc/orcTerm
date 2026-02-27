@@ -29,7 +29,7 @@ import java.util.List;
 public class FilesFragment extends Fragment implements SessionManager.SessionListener {
 
     private RecyclerView recyclerView;
-    private TextView textNoSessions;
+    private View emptyStateContainer;
     private SessionAdapter adapter;
     private SharedPreferences prefs;
     private String currentHost;
@@ -47,11 +47,18 @@ public class FilesFragment extends Fragment implements SessionManager.SessionLis
         AppBackgroundHelper.applyFromPrefs(requireContext(), view);
         
         recyclerView = view.findViewById(R.id.recycler_sessions);
-        textNoSessions = view.findViewById(R.id.text_no_sessions);
+        emptyStateContainer = view.findViewById(R.id.empty_state_container);
         
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
         adapter = new SessionAdapter();
         recyclerView.setAdapter(adapter);
+        
+        // Handle empty state action
+        view.findViewById(R.id.empty_state_action).setOnClickListener(v -> {
+             if (getActivity() instanceof com.orcterm.ui.MainActivity) {
+                 ((com.orcterm.ui.MainActivity) getActivity()).navigateToServers();
+             }
+        });
         
         adapter.setOnSessionClickListener(session -> {
             Intent intent = new Intent(getContext(), SftpActivity.class);
@@ -95,7 +102,7 @@ public class FilesFragment extends Fragment implements SessionManager.SessionLis
         loadCurrentHost();
         if (TextUtils.isEmpty(currentHost) || currentPort <= 0) {
             recyclerView.setVisibility(View.GONE);
-            textNoSessions.setVisibility(View.VISIBLE);
+            emptyStateContainer.setVisibility(View.VISIBLE);
             adapter.setSessions(new ArrayList<>());
             return;
         }
@@ -113,11 +120,11 @@ public class FilesFragment extends Fragment implements SessionManager.SessionLis
         }
         if (selected == null) {
             recyclerView.setVisibility(View.GONE);
-            textNoSessions.setVisibility(View.VISIBLE);
+            emptyStateContainer.setVisibility(View.VISIBLE);
             adapter.setSessions(new ArrayList<>());
         } else {
             recyclerView.setVisibility(View.VISIBLE);
-            textNoSessions.setVisibility(View.GONE);
+            emptyStateContainer.setVisibility(View.GONE);
             List<SessionInfo> one = new ArrayList<>();
             one.add(selected);
             adapter.setSessions(one);

@@ -125,141 +125,54 @@ public class TerminalKeypadView extends HorizontalScrollView {
         parent.addView(btn);
         return btn;
     }
+    private MaterialButton addIconKey(Context context, LinearLayout parent, String label, String value, int iconRes) {
+        MaterialButton btn = addKey(context, parent, label, value, 0f, 0);
+        btn.setText("");
+        btn.setIconResource(iconRes);
+        btn.setIconTint(ColorStateList.valueOf(keyTextColor));
+        btn.setContentDescription(label);
+        return btn;
+    }
 
     private void buildLayout(Context context) {
         rootLayout.removeAllViews();
+
         LinearLayout row1 = new LinearLayout(context);
-        row1.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout row2 = new LinearLayout(context);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout row3 = new LinearLayout(context);
+
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
         row3.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout row4 = new LinearLayout(context);
-        row4.setOrientation(LinearLayout.HORIZONTAL);
 
-        row1.setPadding(0, 0, 0, dpToPx(4));
-        row2.setPadding(0, 0, 0, dpToPx(4));
-        row3.setPadding(0, 0, 0, dpToPx(4));
+        int rowSpacing = dpToPx(4);
+        row1.setPadding(0, 0, 0, rowSpacing);
+        row2.setPadding(0, 0, 0, rowSpacing);
 
-        // Common head row
-        addKey(context, row1, "KBD", "KBD", 0f, 56);
-        addKey(context, row1, "LAY", "LAY", 0f, 56);
-        addKey(context, row1, "ESC", "\u001b");
-        addKey(context, row1, "TAB", "\t");
-        addKey(context, row1, "⌫", "\u007f");
-        btnCtrl = addKey(context, row1, "CTRL", "CTRL");
-        btnAlt = addKey(context, row1, "ALT", "ALT");
-        btnMeta = addKey(context, row1, "META", "META");
+        // 第一行：Esc  Alt  Home  ↑  End  Copy  IME
+        addKey(context, row1, "Esc", "\u001b", 1f, 0);
+        btnAlt = addKey(context, row1, "Alt", "ALT", 1f, 0);
+        addKey(context, row1, "Home", "\u001b[H", 1f, 0);
+        addKey(context, row1, "↑", "\u001b[A", 1f, 0);
+        addKey(context, row1, "End", "\u001b[F", 1f, 0);
+        addIconKey(context, row1, "Copy", "COPY", R.drawable.ic_action_content_copy);
+        addIconKey(context, row1, "IME", "IME", R.drawable.ic_action_keyboard);
 
-        if (layoutMode == 1) {
-            // Programming layout
-            addKey(context, row2, "(", "(");
-            addKey(context, row2, ")", ")");
-            addKey(context, row2, "[", "[");
-            addKey(context, row2, "]", "]");
-            addKey(context, row2, "{", "{");
-            addKey(context, row2, "}", "}");
-            addKey(context, row2, "<", "<");
-            addKey(context, row2, ">", ">");
-            addKey(context, row2, "=", "=");
-            addKey(context, row2, "==", "==");
-            addKey(context, row2, "!=", "!=");
+        // 第二行：Tab  Ctrl  ←  ↓  →  Paste  KBD
+        addKey(context, row2, "Tab", "\t", 1f, 0);
+        btnCtrl = addKey(context, row2, "Ctrl", "CTRL", 1f, 0);
+        addKey(context, row2, "←", "\u001b[D", 1f, 0);
+        addKey(context, row2, "↓", "\u001b[B", 1f, 0);
+        addKey(context, row2, "→", "\u001b[C", 1f, 0);
+        addIconKey(context, row2, "Paste", "PASTE", R.drawable.ic_action_content_paste);
+        addIconKey(context, row2, "KBD", "KBD", R.drawable.ic_action_terminal);
 
-            addKey(context, row3, "&", "&");
-            addKey(context, row3, "&&", "&&");
-            addKey(context, row3, "|", "|");
-            addKey(context, row3, "||", "||");
-            addKey(context, row3, "->", "->");
-            addKey(context, row3, "=>", "=>");
-            addKey(context, row3, "::", "::");
-            addKey(context, row3, "//", "//");
-            addKey(context, row3, "/*", "/*");
-            addKey(context, row3, "*/", "*/");
-            addKey(context, row3, "-", "-");
-            addKey(context, row3, "_", "_");
-            addKey(context, row3, ".", ".");
-            addKey(context, row3, ",", ",");
-            addKey(context, row3, ":", ":");
-            addKey(context, row3, ";", ";");
-            addKey(context, row3, "?", "?");
-
-            addKey(context, row4, "CTRL+C", "\u0003");
-            addKey(context, row4, "CTRL+V", "\u0016");
-            addKey(context, row4, "CTRL+Z", "\u001a");
-            addKey(context, row4, "CTRL+L", "\u000c");
-            addKey(context, row4, "CTRL+U", "\u0015");
-            addKey(context, row4, "CTRL+W", "\u0017");
-            addKey(context, row4, "SPACE", " ", 2f, 72);
-        } else if (layoutMode == 2) {
-            // Server layout
-            addKey(context, row2, "INS", "\u001b[2~");
-            addKey(context, row2, "HOME", "\u001b[1~");
-            addKey(context, row2, "END", "\u001b[4~");
-            addKey(context, row2, "PGUP", "\u001b[5~");
-            addKey(context, row2, "PGDN", "\u001b[6~");
-            addKey(context, row2, "↑", "\u001b[A");
-            addKey(context, row2, "↓", "\u001b[B");
-            addKey(context, row2, "←", "\u001b[D");
-            addKey(context, row2, "→", "\u001b[C");
-
-            addKey(context, row3, "|", "|");
-            addKey(context, row3, "&", "&");
-            addKey(context, row3, ";", ";");
-            addKey(context, row3, ":", ":");
-            addKey(context, row3, "/", "/");
-            addKey(context, row3, "\\", "\\");
-            addKey(context, row3, "-", "-");
-            addKey(context, row3, "_", "_");
-            addKey(context, row3, "~", "~");
-            addKey(context, row3, "`", "`");
-
-            addKey(context, row4, "CTRL+C", "\u0003");
-            addKey(context, row4, "CTRL+D", "\u0004");
-            addKey(context, row4, "CTRL+Z", "\u001a");
-            addKey(context, row4, "CTRL+L", "\u000c");
-            addKey(context, row4, "CTRL+R", "\u0012");
-            addKey(context, row4, "CTRL+W", "\u0017");
-            addKey(context, row4, "CTRL+B", "\u0002");
-            addKey(context, row4, "CTRL+P", "\u0010");
-            addKey(context, row4, "CTRL+N", "\u000e");
-            addKey(context, row4, "CTRL+E", "\u0005");
-            addKey(context, row4, "CTRL+K", "\u000b");
-            addKey(context, row4, "SPACE", " ", 2f, 72);
-        } else {
-            // Standard layout
-            addKey(context, row2, "HOME", "\u001b[1~");
-            addKey(context, row2, "END", "\u001b[4~");
-            addKey(context, row2, "PGUP", "\u001b[5~");
-            addKey(context, row2, "PGDN", "\u001b[6~");
-            addKey(context, row2, "↑", "\u001b[A");
-            addKey(context, row2, "↓", "\u001b[B");
-            addKey(context, row2, "←", "\u001b[D");
-            addKey(context, row2, "→", "\u001b[C");
-
-            addKey(context, row3, "|", "|");
-            addKey(context, row3, "&", "&");
-            addKey(context, row3, "~", "~");
-            addKey(context, row3, "/", "/");
-            addKey(context, row3, "\\", "\\");
-            addKey(context, row3, "*", "*");
-            addKey(context, row3, "$", "$");
-            addKey(context, row3, "#", "#");
-
-            addKey(context, row4, "CTRL+C", "\u0003");
-            addKey(context, row4, "CTRL+V", "\u0016");
-            addKey(context, row4, "CTRL+Z", "\u001a");
-            addKey(context, row4, "CTRL+D", "\u0004");
-            addKey(context, row4, "CTRL+A", "\u0001");
-            addKey(context, row4, "CTRL+X", "\u0018");
-            addKey(context, row4, "CTRL+S", "\u0013");
-            addKey(context, row4, "CTRL+L", "\u000c");
-            addKey(context, row4, "SPACE", " ", 2f, 72);
-        }
+        // 第三行：Shift（宽按键）
+        btnMeta = addKey(context, row3, "Shift", "META", 1f, 0);
 
         rootLayout.addView(row1);
         rootLayout.addView(row2);
         rootLayout.addView(row3);
-        rootLayout.addView(row4);
         updateModifierIndicator();
     }
 
@@ -282,7 +195,7 @@ public class TerminalKeypadView extends HorizontalScrollView {
             updateModifierIndicator();
             return;
         }
-        if ("META".equals(label)) {
+        if ("META".equals(label) || "Shift".equals(label)) {
             isMetaPressed = !isMetaPressed;
             updateModifierIndicator();
             return;
